@@ -1,0 +1,128 @@
+<Window x:Class="AnimeFolderOrganizer.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:AnimeFolderOrganizer.ViewModels"
+        xmlns:sys="clr-namespace:System;assembly=mscorlib"
+        xmlns:models="clr-namespace:AnimeFolderOrganizer.Models"
+        mc:Ignorable="d"
+        Title="Anime Folder Organizer" Height="600" Width="1000"
+        d:DataContext="{d:DesignInstance Type=vm:MainViewModel, IsDesignTimeCreatable=False}">
+    
+    <Window.Resources>
+        <ObjectDataProvider x:Key="NamingLanguageEnum" MethodName="GetValues" ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="models:NamingLanguage"/>
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
+    </Window.Resources>
+
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="200"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Top Bar -->
+        <Grid Grid.Row="0" Margin="0,0,0,10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            
+            <TextBox Text="{Binding TargetDirectory}" VerticalContentAlignment="Center" Margin="0,0,5,0" Padding="5"/>
+            <Button Command="{Binding SelectFolderCommand}" Content="..." Padding="10,5" Margin="0,0,5,0" Grid.Column="1"/>
+            
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="0,0,5,0" VerticalAlignment="Center">
+                <TextBlock Text="偏好語言:" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                <ComboBox ItemsSource="{Binding Source={StaticResource NamingLanguageEnum}}" 
+                          SelectedItem="{Binding PreferredLanguage}" 
+                          Width="100"/>
+            </StackPanel>
+            
+            <Button Command="{Binding OpenSettingsCommand}" Content="⚙ 設定" Padding="10,5" Margin="0,0,5,0" Grid.Column="3"/>
+
+            <Button Command="{Binding ScanFoldersCommand}" Content="掃描資料夾" Padding="10,5" Margin="0,0,5,0" Grid.Column="4"/>
+            <Button Command="{Binding RenameFoldersCommand}" Content="執行改名" Padding="10,5" Grid.Column="5"/>
+        </Grid>
+
+        <!-- Main Content -->
+        <DataGrid Grid.Row="1" ItemsSource="{Binding FolderList}" AutoGenerateColumns="False" CanUserAddRows="False" Margin="0,0,0,10">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="原始名稱" Binding="{Binding OriginalFolderName}" Width="250" IsReadOnly="True"/>
+                
+                <!-- 新增：下拉選單供使用者選擇標題 -->
+                <DataGridTemplateColumn Header="目標標題 (可選擇)" Width="250">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <ComboBox ItemsSource="{Binding AvailableTitles}" 
+                                      SelectedItem="{Binding SelectedTitle, UpdateSourceTrigger=PropertyChanged}"
+                                      IsEditable="True"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+                <DataGridTextColumn Header="預覽結果" Binding="{Binding SuggestedName, Mode=OneWay}" Width="250" IsReadOnly="True" Foreground="Gray"/>
+                <DataGridTextColumn Header="年份" Binding="{Binding Year}" Width="60" IsReadOnly="True"/>
+                <DataGridTextColumn Header="手動ID" Binding="{Binding MetadataId, UpdateSourceTrigger=PropertyChanged}" Width="120"/>
+                <DataGridCheckBoxColumn Header="已識別" Binding="{Binding IsIdentified}" Width="60" IsReadOnly="True"/>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- Workspace -->
+        <Border Grid.Row="2" BorderBrush="#DDD" BorderThickness="1" CornerRadius="4" Padding="8">
+            <TabControl>
+                <TabItem Header="掃描進度">
+                    <StackPanel Margin="6">
+                        <TextBlock Text="掃描進度" FontWeight="Bold" Margin="0,0,0,6"/>
+                        <ProgressBar Height="18" Minimum="0" Maximum="100" Value="{Binding ScanProgress}"/>
+                        <TextBlock Margin="0,6,0,0" Text="{Binding ScanProgressText}"/>
+                    </StackPanel>
+                </TabItem>
+                <TabItem Header="更名狀態">
+                    <StackPanel Margin="6">
+                        <TextBlock Text="{Binding RenameStatusMessage}" FontWeight="Bold" Margin="0,0,0,6"/>
+                        <ProgressBar Height="18" Minimum="0" Maximum="100" Value="{Binding RenameProgress}"/>
+                        <TextBlock Margin="0,6,0,0" Text="{Binding RenameProgressText}"/>
+                    </StackPanel>
+                </TabItem>
+                <TabItem Header="歷史紀錄">
+                    <DockPanel>
+                        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,6">
+                            <Button Content="還原選取" Command="{Binding RestoreHistoryCommand}" Padding="10,4" Margin="0,0,8,0"/>
+                            <Button Content="批次還原" Command="{Binding RestoreSelectedCommand}" Padding="10,4" Margin="0,0,8,0"/>
+                            <Button Content="重新載入" Command="{Binding LoadHistoryCommand}" Padding="10,4"/>
+                        </StackPanel>
+                        <DataGrid ItemsSource="{Binding HistoryItems}"
+                                  SelectedItem="{Binding SelectedHistoryItem}"
+                                  AutoGenerateColumns="False"
+                                  CanUserAddRows="False">
+                            <DataGrid.Columns>
+                                <DataGridCheckBoxColumn Header="選取" Binding="{Binding IsSelected}" Width="60"/>
+                                <DataGridTextColumn Header="時間(UTC)" Binding="{Binding TimestampUtc}" Width="150" IsReadOnly="True"/>
+                                <DataGridTextColumn Header="原始路徑" Binding="{Binding OriginalPath}" Width="*" IsReadOnly="True"/>
+                                <DataGridTextColumn Header="新路徑" Binding="{Binding NewPath}" Width="*" IsReadOnly="True"/>
+                                <DataGridTextColumn Header="狀態" Binding="{Binding Status}" Width="100" IsReadOnly="True"/>
+                                <DataGridTextColumn Header="訊息" Binding="{Binding Message}" Width="200" IsReadOnly="True"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </DockPanel>
+                </TabItem>
+            </TabControl>
+        </Border>
+
+        <!-- Status Bar -->
+        <StatusBar Grid.Row="3">
+            <StatusBarItem>
+                <TextBlock Text="{Binding StatusMessage}"/>
+            </StatusBarItem>
+        </StatusBar>
+    </Grid>
+</Window>
