@@ -4,34 +4,33 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:AnimeFolderOrganizer.ViewModels"
-        xmlns:sys="clr-namespace:System;assembly=mscorlib"
-        xmlns:models="clr-namespace:AnimeFolderOrganizer.Models"
         mc:Ignorable="d"
         Title="Anime Folder Organizer" Height="600" Width="1000"
         d:DataContext="{d:DesignInstance Type=vm:MainViewModel, IsDesignTimeCreatable=False}">
-    
-    <Window.Resources>
-        <ObjectDataProvider x:Key="NamingLanguageEnum" MethodName="GetValues" ObjectType="{x:Type sys:Enum}">
-            <ObjectDataProvider.MethodParameters>
-                <x:Type TypeName="models:NamingLanguage"/>
-            </ObjectDataProvider.MethodParameters>
-        </ObjectDataProvider>
-    </Window.Resources>
 
     <Grid Margin="10">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="200"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
+        <!-- Title Bar -->
+        <Border Grid.Row="0" Padding="8" Margin="0,0,0,10" CornerRadius="8" Background="{DynamicResource MdSurfaceVariant}">
+            <DockPanel LastChildFill="True">
+                <Menu DockPanel.Dock="Top" Background="Transparent">
+                    <MenuItem Header="設定" Command="{Binding OpenSettingsCommand}"/>
+                </Menu>
+            </DockPanel>
+        </Border>
+
         <!-- Top Bar -->
-        <Grid Grid.Row="0" Margin="0,0,0,10">
+        <Grid Grid.Row="1" Margin="0,0,0,10">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
@@ -39,22 +38,13 @@
             
             <TextBox Text="{Binding TargetDirectory}" VerticalContentAlignment="Center" Margin="0,0,5,0" Padding="5"/>
             <Button Command="{Binding SelectFolderCommand}" Content="..." Padding="10,5" Margin="0,0,5,0" Grid.Column="1"/>
-            
-            <StackPanel Grid.Column="2" Orientation="Horizontal" Margin="0,0,5,0" VerticalAlignment="Center">
-                <TextBlock Text="偏好語言:" VerticalAlignment="Center" Margin="0,0,5,0"/>
-                <ComboBox ItemsSource="{Binding Source={StaticResource NamingLanguageEnum}}" 
-                          SelectedItem="{Binding PreferredLanguage}" 
-                          Width="100"/>
-            </StackPanel>
-            
-            <Button Command="{Binding OpenSettingsCommand}" Content="⚙ 設定" Padding="10,5" Margin="0,0,5,0" Grid.Column="3"/>
 
-            <Button Command="{Binding ScanFoldersCommand}" Content="掃描資料夾" Padding="10,5" Margin="0,0,5,0" Grid.Column="4"/>
-            <Button Command="{Binding RenameFoldersCommand}" Content="執行改名" Padding="10,5" Grid.Column="5"/>
+            <Button Command="{Binding ScanFoldersCommand}" Content="掃描資料夾" Padding="10,5" Grid.Column="2"/>
+            <CheckBox Grid.Column="3" Content="顯示已更名資料夾" IsChecked="{Binding ShowRenamedFolders}" VerticalAlignment="Center" Margin="10,0,0,0"/>
         </Grid>
 
         <!-- Main Content -->
-        <DataGrid Grid.Row="1" ItemsSource="{Binding FolderList}" AutoGenerateColumns="False" CanUserAddRows="False" Margin="0,0,0,10">
+        <DataGrid Grid.Row="2" ItemsSource="{Binding FolderList}" AutoGenerateColumns="False" CanUserAddRows="False" Margin="0,0,0,10">
             <DataGrid.Columns>
                 <DataGridTextColumn Header="原始名稱" Binding="{Binding OriginalFolderName}" Width="250" IsReadOnly="True"/>
                 
@@ -76,8 +66,15 @@
             </DataGrid.Columns>
         </DataGrid>
 
+        <!-- Rename Bar -->
+        <Border Grid.Row="3" Padding="10" Margin="0,0,0,10" CornerRadius="8" Background="{DynamicResource MdSurfaceVariant}">
+            <DockPanel>
+                <Button Command="{Binding RenameFoldersCommand}" Content="執行改名" Padding="16,6" DockPanel.Dock="Right"/>
+            </DockPanel>
+        </Border>
+
         <!-- Workspace -->
-        <Border Grid.Row="2" BorderBrush="#DDD" BorderThickness="1" CornerRadius="4" Padding="8">
+        <Border Grid.Row="4" BorderBrush="{DynamicResource MdOutline}" BorderThickness="1" CornerRadius="8" Padding="8">
             <TabControl>
                 <TabItem Header="掃描進度">
                     <StackPanel Margin="6">
@@ -119,7 +116,7 @@
         </Border>
 
         <!-- Status Bar -->
-        <StatusBar Grid.Row="3">
+        <StatusBar Grid.Row="5">
             <StatusBarItem>
                 <TextBlock Text="{Binding StatusMessage}"/>
             </StatusBarItem>

@@ -9,4 +9,5 @@ public interface IHistoryDbService
     Task InitializeAsync();
     Task AddAsync(RenameHistoryEntry entry);
     Task<IReadOnlyList<RenameHistoryEntry>> GetRecentAsync(int count);
+    Task<HashSet<string>> GetRenamedPathSetAsync();
 }

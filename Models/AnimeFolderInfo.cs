@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace AnimeFolderOrganizer.Models;
 
@@ -27,6 +28,9 @@ public partial class AnimeFolderInfo : ObservableObject
 
     [ObservableProperty]
     private bool _isIdentified;
+
+    [ObservableProperty]
+    private bool _isRenamed;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SuggestedName))]
@@ -86,6 +90,12 @@ public partial class AnimeFolderInfo : ObservableObject
 
         var safeFormat = string.IsNullOrWhiteSpace(format) ? "{Title} ({Year})" : format;
 
+        // 若標題已包含年份且格式也會再加年份，避免重複
+        if (Year.HasValue && safeFormat.Contains("{Year}") && TryRemoveTrailingYear(titleToUse, Year.Value, out var trimmedTitle))
+        {
+            titleToUse = trimmedTitle;
+        }
+
         if (!Year.HasValue)
         {
             safeFormat = safeFormat.Replace("({Year})", string.Empty);
@@ -102,6 +112,23 @@ public partial class AnimeFolderInfo : ObservableObject
 
         return name.Trim();
     }
+
+    private static bool TryRemoveTrailingYear(string title, int year, out string trimmedTitle)
+    {
+        var match = TrailingYearRegex().Match(title);
+        if (match.Success && int.TryParse(match.Groups["y"].Value, out var parsed) && parsed == year)
+        {
+            // 移除末尾年份，避免 {Title} + {Year} 重複
+            trimmedTitle = title.Substring(0, match.Index).TrimEnd();
+            return true;
+        }
+
+        trimmedTitle = title;
+        return false;
+    }
+
+    [GeneratedRegex(@"\s*\((?<y>\d{4})\)\s*$", RegexOptions.Compiled)]
+    private static partial Regex TrailingYearRegex();
 
     /// <summary>
     /// 更新可用標題清單通知 (當標題資料更新時呼叫)

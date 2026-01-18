@@ -95,4 +95,34 @@ public class HistoryDbService : IHistoryDbService
 
         return list;
     }
+
+    public async Task<HashSet<string>> GetRenamedPathSetAsync()
+    {
+        var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync();
+
+        var cmd = connection.CreateCommand();
+        cmd.CommandText = """
+            SELECT DISTINCT NewPath
+            FROM RenameHistory
+            WHERE Status = 'Success';
+            """;
+
+        await using var reader = await cmd.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            if (!reader.IsDBNull(0))
+            {
+                var path = reader.GetString(0);
+                if (!string.IsNullOrWhiteSpace(path))
+                {
+                    set.Add(path);
+                }
+            }
+        }
+
+        return set;
+    }
 }

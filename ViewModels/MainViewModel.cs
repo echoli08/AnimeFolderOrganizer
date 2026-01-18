@@ -4,6 +4,8 @@ using System.IO;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Input;
+using System.Windows.Data;
+using System.ComponentModel;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using AnimeFolderOrganizer.Models;
@@ -11,6 +13,7 @@ using AnimeFolderOrganizer.Services;
 using System.Collections.Generic;
 using System.Linq;
 using Microsoft.Extensions.DependencyInjection;
+using System.Text.RegularExpressions;
 
 namespace AnimeFolderOrganizer.ViewModels;
 
@@ -22,6 +25,8 @@ public partial class MainViewModel : ObservableObject
     private readonly ISettingsService _settingsService;
     private readonly ITextConverter _textConverter;
     private readonly IHistoryDbService _historyDbService;
+    private readonly ICollectionView _folderView;
+    private readonly Dictionary<string, Regex> _formatRegexCache = new(StringComparer.Ordinal);
 
     public MainViewModel(
         IMetadataProvider metadataProvider,
@@ -38,6 +43,8 @@ public partial class MainViewModel : ObservableObject
         _textConverter = textConverter;
         _historyDbService = historyDbService;
         FolderList = new ObservableCollection<AnimeFolderInfo>();
+        _folderView = CollectionViewSource.GetDefaultView(FolderList);
+        _folderView.Filter = FilterFolder;
         HistoryItems = new ObservableCollection<HistoryItemViewModel>();
         PreferredLanguage = _settingsService.PreferredLanguage;
         NamingFormat = _settingsService.NamingFormat;
@@ -74,6 +81,9 @@ public partial class MainViewModel : ObservableObject
     private string _renameStatusMessage = "等待中";
 
     [ObservableProperty]
+    private bool _showRenamedFolders = true;
+
+    [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(RestoreHistoryCommand))]
     private HistoryItemViewModel? _selectedHistoryItem;
 
@@ -88,12 +98,13 @@ public partial class MainViewModel : ObservableObject
     public ObservableCollection<HistoryItemViewModel> HistoryItems { get; }
 
     [RelayCommand(CanExecute = nameof(CanExecuteAction))]
-    private void SelectFolder()
+    private async Task SelectFolderAsync()
     {
         string? path = _folderPickerService.PickFolder();
         if (!string.IsNullOrWhiteSpace(path))
         {
             TargetDirectory = path;
+            await LoadFolderSnapshotAsync(path);
         }
     }
 
@@ -202,13 +213,45 @@ public partial class MainViewModel : ObservableObject
 
             var directories = await Task.Run(() => Directory.GetDirectories(TargetDirectory));
             var dirInfos = directories.Select(d => new DirectoryInfo(d)).ToList();
+            var renamedPaths = await _historyDbService.GetRenamedPathSetAsync();
             const int batchSize = 10;
             ScanProgress = 0;
             ScanProgressText = $"0/{dirInfos.Count}";
+            _folderView.Refresh();
 
-            for (var i = 0; i < dirInfos.Count; i += batchSize)
+            var pending = new List<DirectoryInfo>();
+            var processed = 0;
+
+            foreach (var dirInfo in dirInfos)
             {
-                var batch = dirInfos.Skip(i).Take(batchSize).ToList();
+                var isRenamed = renamedPaths.Contains(dirInfo.FullName);
+                var isFormatted = MatchesNamingFormat(dirInfo.Name, NamingFormat);
+
+                if (isRenamed || isFormatted)
+                {
+                    var info = new AnimeFolderInfo(dirInfo.FullName, dirInfo.Name)
+                    {
+                        NamingFormat = NamingFormat,
+                        IsRenamed = true,
+                        AnalyzedTitle = dirInfo.Name,
+                        SelectedTitle = dirInfo.Name
+                    };
+                    info.UpdateAvailableTitles();
+                    FolderList.Add(info);
+
+                    processed++;
+                    ScanProgress = dirInfos.Count == 0 ? 0 : processed * 100.0 / dirInfos.Count;
+                    ScanProgressText = $"{processed}/{dirInfos.Count}";
+                    StatusMessage = $"正在掃描與識別... {processed}/{dirInfos.Count}";
+                    continue;
+                }
+
+                pending.Add(dirInfo);
+            }
+
+            for (var i = 0; i < pending.Count; i += batchSize)
+            {
+                var batch = pending.Skip(i).Take(batchSize).ToList();
                 var names = batch.Select(d => d.Name).ToList();
                 var results = await _metadataProvider.AnalyzeBatchAsync(names);
 
@@ -231,7 +274,7 @@ public partial class MainViewModel : ObservableObject
                         info.MetadataId = result.Id;
                         info.IsIdentified = IsValidMetadata(result);
 
-                        info.AnalyzedTitle = result.TitleTW ?? result.TitleCN ?? result.TitleJP;
+                        info.AnalyzedTitle = result.TitleTW ?? result.TitleCN ?? result.TitleJP ?? result.TitleEN;
                         info.SelectedTitle = GetPreferredTitle(info);
                         info.UpdateAvailableTitles();
                     }
@@ -239,7 +282,7 @@ public partial class MainViewModel : ObservableObject
                     FolderList.Add(info);
                 }
 
-                var processed = Math.Min(i + batch.Count, dirInfos.Count);
+                processed += batch.Count;
                 ScanProgress = dirInfos.Count == 0 ? 0 : processed * 100.0 / dirInfos.Count;
                 ScanProgressText = $"{processed}/{dirInfos.Count}";
                 StatusMessage = $"正在掃描與識別... {processed}/{dirInfos.Count}";
@@ -341,8 +384,10 @@ public partial class MainViewModel : ObservableObject
                     await Task.Run(() => Directory.Move(item.OriginalPath, newPath));
                     existingNames.Add(newPath);
                     item.UpdateOriginalPath(newPath);
+                    item.IsRenamed = true;
                     successCount++;
                     await AddHistoryAsync(originalPath, newPath, "Success", "改名完成");
+                    RefreshFolderView();
                 }
                 catch (Exception ex)
                 {
@@ -380,6 +425,48 @@ public partial class MainViewModel : ObservableObject
 
     private bool CanRestoreSelected() => !IsBusy && HistoryItems.Any(x => x.IsSelected);
 
+    private bool FilterFolder(object? obj)
+    {
+        if (ShowRenamedFolders) return true;
+        return obj is AnimeFolderInfo info && !info.IsRenamed;
+    }
+
+    private void RefreshFolderView()
+    {
+        _folderView.Refresh();
+    }
+
+    private bool MatchesNamingFormat(string folderName, string format)
+    {
+        try
+        {
+            if (_formatRegexCache.TryGetValue(format, out var cached))
+            {
+                return cached.IsMatch(folderName);
+            }
+
+            // 依格式動態建立 Regex，避免解析標題內容
+            var pattern = Regex.Escape(format)
+                .Replace("\\{Title\\}", ".+")
+                .Replace("\\{TitleTW\\}", ".+")
+                .Replace("\\{TitleCN\\}", ".+")
+                .Replace("\\{TitleJP\\}", ".+")
+                .Replace("\\{TitleEN\\}", ".+")
+                .Replace("\\{Original\\}", ".+")
+                .Replace("\\{Year\\}", "\\\\d{4}");
+
+            pattern = $"^{pattern}$";
+            var regex = new Regex(pattern, RegexOptions.Compiled | RegexOptions.IgnoreCase);
+            _formatRegexCache[format] = regex;
+            return regex.IsMatch(folderName);
+        }
+        catch
+        {
+            // 例外處理：格式異常時不視為已符合
+            return false;
+        }
+    }
+
     private async Task AddHistoryAsync(string originalPath, string newPath, string status, string message)
     {
         try
@@ -400,6 +487,49 @@ public partial class MainViewModel : ObservableObject
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"AddHistory failed: {ex}");
+        }
+    }
+
+    private async Task LoadFolderSnapshotAsync(string path)
+    {
+        if (!Directory.Exists(path)) return;
+
+        try
+        {
+            IsBusy = true;
+            StatusMessage = "載入資料夾清單...";
+            FolderList.Clear();
+
+            var directories = await Task.Run(() => Directory.GetDirectories(path));
+            var renamedPaths = await _historyDbService.GetRenamedPathSetAsync();
+
+            foreach (var dir in directories)
+            {
+                var dirInfo = new DirectoryInfo(dir);
+                var info = new AnimeFolderInfo(dirInfo.FullName, dirInfo.Name)
+                {
+                    NamingFormat = NamingFormat,
+                    IsRenamed = renamedPaths.Contains(dirInfo.FullName),
+                    AnalyzedTitle = dirInfo.Name,
+                    SelectedTitle = dirInfo.Name
+                };
+
+                info.UpdateAvailableTitles();
+                FolderList.Add(info);
+            }
+
+            ScanProgress = 0;
+            ScanProgressText = $"0/{FolderList.Count}";
+            StatusMessage = $"已載入 {FolderList.Count} 個資料夾";
+            RefreshFolderView();
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"載入清單失敗: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
         }
     }
 
@@ -454,6 +584,8 @@ public partial class MainViewModel : ObservableObject
         if (item != null)
         {
             item.UpdateOriginalPath(targetPath);
+            item.IsRenamed = false;
+            RefreshFolderView();
         }
 
         StatusMessage = "還原完成";
@@ -484,10 +616,16 @@ public partial class MainViewModel : ObservableObject
 
     partial void OnNamingFormatChanged(string value)
     {
+        _formatRegexCache.Clear();
         foreach (var item in FolderList)
         {
             item.NamingFormat = value;
         }
+    }
+
+    partial void OnShowRenamedFoldersChanged(bool value)
+    {
+        _folderView.Refresh();
     }
 
     private string? GetPreferredTitle(AnimeFolderInfo info)
