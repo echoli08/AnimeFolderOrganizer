@@ -7,7 +7,7 @@
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
         xmlns:models="clr-namespace:AnimeFolderOrganizer.Models"
         mc:Ignorable="d"
-        Title="Anime Folder Organizer" Height="600" Width="1050"
+        Title="Anime Folder Organizer" Height="600" Width="1120"
         d:DataContext="{d:DesignInstance Type=vm:MainViewModel, IsDesignTimeCreatable=False}">
 
     <Window.Resources>
