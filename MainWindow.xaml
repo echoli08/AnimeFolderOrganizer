@@ -67,6 +67,19 @@
 
         <!-- Main Content -->
         <DataGrid Grid.Row="2" ItemsSource="{Binding FolderList}" AutoGenerateColumns="False" CanUserAddRows="False" Margin="0,0,0,10">
+            <DataGrid.RowStyle>
+                <Style TargetType="DataGridRow">
+                    <Setter Property="ContextMenu">
+                        <Setter.Value>
+                            <ContextMenu>
+                                <MenuItem Header="重新辨識"
+                                          Command="{Binding DataContext.ReanalyzeFolderCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                          CommandParameter="{Binding}"/>
+                            </ContextMenu>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </DataGrid.RowStyle>
             <DataGrid.Columns>
                 <DataGridTextColumn Header="原始名稱" Binding="{Binding OriginalFolderName}" Width="250" IsReadOnly="True"/>
                 
@@ -83,18 +96,7 @@
 
                 <DataGridTextColumn Header="預覽結果" Binding="{Binding SuggestedName, Mode=OneWay}" Width="250" IsReadOnly="True" Foreground="Gray"/>
                 <DataGridTextColumn Header="年份" Binding="{Binding Year}" Width="60" IsReadOnly="True"/>
-                <DataGridTextColumn Header="手動ID" Binding="{Binding MetadataId, UpdateSourceTrigger=PropertyChanged}" Width="120"/>
                 <DataGridTextColumn Header="已辨識" Binding="{Binding IdentificationStatus}" Width="80" IsReadOnly="True"/>
-                <DataGridTemplateColumn Header="重新辨識" Width="90">
-                    <DataGridTemplateColumn.CellTemplate>
-                        <DataTemplate>
-                            <Button Content="重新辨識"
-                                    Command="{Binding DataContext.ReanalyzeFolderCommand, RelativeSource={RelativeSource AncestorType=Window}}"
-                                    CommandParameter="{Binding}"
-                                    Padding="6,2"/>
-                        </DataTemplate>
-                    </DataGridTemplateColumn.CellTemplate>
-                </DataGridTemplateColumn>
             </DataGrid.Columns>
         </DataGrid>
 
