@@ -7,7 +7,7 @@
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
         xmlns:models="clr-namespace:AnimeFolderOrganizer.Models"
         mc:Ignorable="d"
-        Title="設定" Height="420" Width="420"
+        Title="設定" Height="660" Width="440"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize">
 
@@ -17,61 +17,112 @@
                 <x:Type TypeName="models:NamingLanguage"/>
             </ObjectDataProvider.MethodParameters>
         </ObjectDataProvider>
+        <ObjectDataProvider x:Key="ApiProviderEnum" MethodName="GetValues" ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="models:ApiProvider"/>
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
     </Window.Resources>
 
-    <Grid Margin="20">
+    <Grid Margin="12">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <Grid Grid.Row="1">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-            
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Grid.Row="0">
             <StackPanel>
-                <TextBlock Text="API Key:"/>
-                <TextBox Text="{Binding ApiKey}" Margin="0,5,0,0" Padding="5"/>
+                <GroupBox Header="Gemini API Key" Margin="0,4,0,0">
+                    <StackPanel Margin="6">
+                        <TextBox Text="{Binding GeminiApiKey, UpdateSourceTrigger=PropertyChanged}" Padding="5"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                            <Button Command="{Binding OpenApiKeyPageCommand}"
+                                    CommandParameter="{x:Static models:ApiProvider.Gemini}"
+                                    Content="取得 Key"
+                                    Padding="10,5"
+                                    Margin="0,0,8,0"/>
+                            <Button Command="{Binding DetectModelsCommand}"
+                                    CommandParameter="{x:Static models:ApiProvider.Gemini}"
+                                    Content="偵測可用模型"
+                                    Padding="10,5"
+                                    Margin="0,0,8,0"/>
+                            <Button Command="{Binding ClearApiKeyCommand}"
+                                    CommandParameter="{x:Static models:ApiProvider.Gemini}"
+                                    Content="清除"
+                                    Padding="10,5"/>
+                        </StackPanel>
+                    </StackPanel>
+                </GroupBox>
+
+                <GroupBox Header="OpenRouter API Key" Margin="0,4,0,0">
+                    <StackPanel Margin="6">
+                        <TextBox Text="{Binding OpenRouterApiKey, UpdateSourceTrigger=PropertyChanged}" Padding="5"/>
+                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                            <Button Command="{Binding OpenApiKeyPageCommand}"
+                                    CommandParameter="{x:Static models:ApiProvider.OpenRouter}"
+                                    Content="取得 Key"
+                                    Padding="10,5"
+                                    Margin="0,0,8,0"/>
+                            <Button Command="{Binding DetectModelsCommand}"
+                                    CommandParameter="{x:Static models:ApiProvider.OpenRouter}"
+                                    Content="偵測可用模型"
+                                    Padding="10,5"
+                                    Margin="0,0,8,0"/>
+                            <Button Command="{Binding ClearApiKeyCommand}"
+                                    CommandParameter="{x:Static models:ApiProvider.OpenRouter}"
+                                    Content="清除"
+                                    Padding="10,5"/>
+                        </StackPanel>
+                    </StackPanel>
+                </GroupBox>
+
+                <Grid Margin="0,4,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Text="API 來源:" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <ComboBox Grid.Column="1"
+                              ItemsSource="{Binding Source={StaticResource ApiProviderEnum}}"
+                              SelectedItem="{Binding ApiProvider}"
+                              Width="200"/>
+                </Grid>
+
+                <StackPanel Margin="0,4,0,0">
+                    <TextBlock Text="Model:"/>
+                    <ComboBox ItemsSource="{Binding AvailableModels}"
+                              SelectedItem="{Binding ModelName, Mode=TwoWay}"
+                              IsEditable="False"
+                              Margin="0,4,0,0"
+                              Padding="5"/>
+                    <TextBlock Text="{Binding ModelListTitle}" Margin="0,5,0,0"/>
+                    <ListBox ItemsSource="{Binding AvailableModels}"
+                             SelectedItem="{Binding ModelName, Mode=TwoWay}"
+                             Height="84"
+                             Margin="0,4,0,0"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"/>
+                    <TextBlock Text="請先按「偵測可用模型」後再載入可用模型。" FontSize="11" Foreground="Gray" Margin="0,5,0,0"/>
+                    <TextBlock Text="{Binding ApiTestStatus}" FontSize="11" Foreground="Gray" Margin="0,3,0,0"/>
+                </StackPanel>
+
+                <StackPanel Margin="0,4,0,0">
+                    <TextBlock Text="命名格式:"/>
+                    <TextBox Text="{Binding NamingFormat}" Margin="0,4,0,0" Padding="5"/>
+                    <TextBlock Text="可用標記: {Title}, {TitleTW}, {TitleCN}, {TitleJP}, {TitleEN}, {Type}, {Year}, {Original}" FontSize="11" Foreground="Gray" Margin="0,5,0,0"/>
+                    <TextBlock Text="TYPE 內容: TV / OVA / 特別版 / 劇場版" FontSize="11" Foreground="Gray" Margin="0,4,0,0"/>
+                </StackPanel>
+
+                <StackPanel Margin="0,4,0,0">
+                    <TextBlock Text="偏好語言:"/>
+                    <ComboBox ItemsSource="{Binding Source={StaticResource NamingLanguageEnum}}"
+                              SelectedItem="{Binding PreferredLanguage}"
+                              Width="160"
+                              Margin="0,4,0,0"/>
+                </StackPanel>
             </StackPanel>
-        </Grid>
+        </ScrollViewer>
 
-        <StackPanel Grid.Row="2" Margin="0,10,0,0">
-            <TextBlock Text="Model:"/>
-            <ComboBox ItemsSource="{Binding AvailableModels}"
-                      SelectedItem="{Binding ModelName}"
-                      IsEditable="True"
-                      Margin="0,5,0,0"
-                      Padding="5"/>
-            <TextBlock Text="可直接輸入或從清單選擇（會自動載入可用模型）" FontSize="11" Foreground="Gray" Margin="0,5,0,0"/>
-        </StackPanel>
-
-        <StackPanel Grid.Row="3" Margin="0,10,0,0">
-            <TextBlock Text="命名格式:"/>
-            <TextBox Text="{Binding NamingFormat}" Margin="0,5,0,0" Padding="5"/>
-            <TextBlock Text="可用標記: {Title}, {TitleTW}, {TitleCN}, {TitleJP}, {TitleEN}, {Year}, {Original}" FontSize="11" Foreground="Gray" Margin="0,5,0,0"/>
-        </StackPanel>
-
-        <StackPanel Grid.Row="4" Margin="0,10,0,0">
-            <TextBlock Text="偏好語言:"/>
-            <ComboBox ItemsSource="{Binding Source={StaticResource NamingLanguageEnum}}"
-                      SelectedItem="{Binding PreferredLanguage}"
-                      Width="160"
-                      Margin="0,5,0,0"/>
-        </StackPanel>
-
-        <TextBlock Grid.Row="5" TextWrapping="Wrap" Margin="0,10,0,0" Foreground="Gray" FontSize="12">
-            請前往 Google AI Studio 取得免費的 API Key 以啟用自動識別功能。
-        </TextBlock>
-
-        <StackPanel Grid.Row="6" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,15,0,0">
-            <Button Command="{Binding GetApiKeyCommand}" Content="取得 API Key" Margin="0,0,10,0" Padding="10,5"/>
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
             <Button Command="{Binding SaveCommand}" Content="儲存並關閉" Padding="10,5" IsDefault="True"/>
         </StackPanel>
     </Grid>

@@ -4,9 +4,19 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:AnimeFolderOrganizer.ViewModels"
+        xmlns:sys="clr-namespace:System;assembly=mscorlib"
+        xmlns:models="clr-namespace:AnimeFolderOrganizer.Models"
         mc:Ignorable="d"
-        Title="Anime Folder Organizer" Height="600" Width="1000"
+        Title="Anime Folder Organizer" Height="600" Width="1050"
         d:DataContext="{d:DesignInstance Type=vm:MainViewModel, IsDesignTimeCreatable=False}">
+
+    <Window.Resources>
+        <ObjectDataProvider x:Key="ApiProviderEnum" MethodName="GetValues" ObjectType="{x:Type sys:Enum}">
+            <ObjectDataProvider.MethodParameters>
+                <x:Type TypeName="models:ApiProvider"/>
+            </ObjectDataProvider.MethodParameters>
+        </ObjectDataProvider>
+    </Window.Resources>
 
     <Grid Margin="10">
         <Grid.RowDefinitions>
@@ -21,7 +31,19 @@
         <!-- Title Bar -->
         <Border Grid.Row="0" Padding="8" Margin="0,0,0,10" CornerRadius="8" Background="{DynamicResource MdSurfaceVariant}">
             <DockPanel LastChildFill="True">
-                <Menu DockPanel.Dock="Top" Background="Transparent">
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                    <TextBlock Text="API:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <ComboBox ItemsSource="{Binding Source={StaticResource ApiProviderEnum}}"
+                              SelectedItem="{Binding ApiProvider, Mode=TwoWay}"
+                              Width="140"
+                              Margin="0,0,12,0"/>
+                    <TextBlock Text="模型:" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                    <ComboBox ItemsSource="{Binding AvailableModels}"
+                              SelectedItem="{Binding ModelName, Mode=TwoWay}"
+                              Width="220"
+                              IsEditable="False"/>
+                </StackPanel>
+                <Menu DockPanel.Dock="Left" Background="Transparent">
                     <MenuItem Header="設定" Command="{Binding OpenSettingsCommand}"/>
                 </Menu>
             </DockPanel>
@@ -62,7 +84,7 @@
                 <DataGridTextColumn Header="預覽結果" Binding="{Binding SuggestedName, Mode=OneWay}" Width="250" IsReadOnly="True" Foreground="Gray"/>
                 <DataGridTextColumn Header="年份" Binding="{Binding Year}" Width="60" IsReadOnly="True"/>
                 <DataGridTextColumn Header="手動ID" Binding="{Binding MetadataId, UpdateSourceTrigger=PropertyChanged}" Width="120"/>
-                <DataGridCheckBoxColumn Header="已識別" Binding="{Binding IsIdentified}" Width="60" IsReadOnly="True"/>
+                <DataGridTextColumn Header="已辨識" Binding="{Binding IdentificationStatus}" Width="80" IsReadOnly="True"/>
             </DataGrid.Columns>
         </DataGrid>
 

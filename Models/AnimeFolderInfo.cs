@@ -24,10 +24,18 @@ public partial class AnimeFolderInfo : ObservableObject
     private int? _year;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SuggestedName))]
+    private string? _type;
+
+    [ObservableProperty]
     private string? _metadataId;
 
     [ObservableProperty]
     private bool _isIdentified;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IdentificationStatus))]
+    private AnimeDbVerificationStatus _verificationStatus;
 
     [ObservableProperty]
     private bool _isRenamed;
@@ -75,6 +83,13 @@ public partial class AnimeFolderInfo : ObservableObject
     /// </summary>
     public string SuggestedName => GetSuggestedName(NamingFormat);
 
+    public string IdentificationStatus => VerificationStatus switch
+    {
+        AnimeDbVerificationStatus.Verified => "已辨識",
+        AnimeDbVerificationStatus.Failed => "驗證失敗",
+        _ => string.Empty
+    };
+
     /// <summary>
     /// 取得建議的目標資料夾名稱
     /// </summary>
@@ -101,12 +116,18 @@ public partial class AnimeFolderInfo : ObservableObject
             safeFormat = safeFormat.Replace("({Year})", string.Empty);
         }
 
+        if (string.IsNullOrWhiteSpace(Type))
+        {
+            safeFormat = safeFormat.Replace("({Type})", string.Empty);
+        }
+
         var name = safeFormat
             .Replace("{Title}", titleToUse)
             .Replace("{TitleTW}", TitleTW ?? titleToUse)
             .Replace("{TitleCN}", TitleCN ?? titleToUse)
             .Replace("{TitleJP}", TitleJP ?? titleToUse)
             .Replace("{TitleEN}", TitleEN ?? titleToUse)
+            .Replace("{Type}", Type ?? string.Empty)
             .Replace("{Year}", Year?.ToString() ?? string.Empty)
             .Replace("{Original}", OriginalFolderName);
 

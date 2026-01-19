@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Collections.Generic;
 using System.Text.Json;
 using System.Threading.Tasks;
 using AnimeFolderOrganizer.Models;
@@ -10,9 +11,40 @@ public class FileSettingsService : ISettingsService
 {
     private const string FileName = "settings.json";
     private readonly string _filePath;
+    private string? _geminiApiKey;
+    private string? _openRouterApiKey;
 
-    public string? ApiKey { get; set; }
-    public string ModelName { get; set; } = "gemini-2.5-flash-lite";
+    public ApiProvider ApiProvider { get; set; } = ApiProvider.Gemini;
+    public string? GeminiApiKey
+    {
+        get => _geminiApiKey;
+        set => _geminiApiKey = value;
+    }
+
+    public string? OpenRouterApiKey
+    {
+        get => _openRouterApiKey;
+        set => _openRouterApiKey = value;
+    }
+
+    public string? ApiKey
+    {
+        get => ApiProvider == ApiProvider.OpenRouter ? _openRouterApiKey : _geminiApiKey;
+        set
+        {
+            if (ApiProvider == ApiProvider.OpenRouter)
+            {
+                _openRouterApiKey = value;
+            }
+            else
+            {
+                _geminiApiKey = value;
+            }
+        }
+    }
+    public List<string> GeminiModels { get; set; } = new();
+    public List<string> OpenRouterModels { get; set; } = new();
+    public string ModelName { get; set; } = ModelDefaults.GeminiDefaultModel;
     public string NamingFormat { get; set; } = "{Title} ({Year})";
     public NamingLanguage PreferredLanguage { get; set; } = NamingLanguage.TraditionalChinese;
 
@@ -28,7 +60,16 @@ public class FileSettingsService : ISettingsService
     {
         try
         {
-            var data = new SettingsData(ApiKey, ModelName, NamingFormat, PreferredLanguage);
+            var data = new SettingsData(
+                ApiProvider,
+                ApiKey,
+                GeminiApiKey,
+                OpenRouterApiKey,
+                GeminiModels,
+                OpenRouterModels,
+                ModelName,
+                NamingFormat,
+                PreferredLanguage);
             var json = JsonSerializer.Serialize(data);
             await File.WriteAllTextAsync(_filePath, json);
         }
@@ -48,8 +89,18 @@ public class FileSettingsService : ISettingsService
                 var data = JsonSerializer.Deserialize<SettingsData>(json);
                 if (data != null)
                 {
-                    ApiKey = data.ApiKey;
-                    ModelName = string.IsNullOrWhiteSpace(data.ModelName) ? "gemini-2.5-flash-lite" : data.ModelName;
+                    ApiProvider = data.ApiProvider;
+                    var legacyKey = data.ApiKey;
+                    GeminiApiKey = string.IsNullOrWhiteSpace(data.GeminiApiKey) ? legacyKey : data.GeminiApiKey;
+                    OpenRouterApiKey = string.IsNullOrWhiteSpace(data.OpenRouterApiKey)
+                        ? (data.ApiProvider == ApiProvider.OpenRouter ? legacyKey : null)
+                        : data.OpenRouterApiKey;
+                    GeminiModels = data.GeminiModels ?? new List<string>();
+                    OpenRouterModels = data.OpenRouterModels ?? new List<string>();
+                    var defaultModel = data.ApiProvider == ApiProvider.OpenRouter
+                        ? ModelDefaults.OpenRouterDefaultModel
+                        : ModelDefaults.GeminiDefaultModel;
+                    ModelName = string.IsNullOrWhiteSpace(data.ModelName) ? defaultModel : data.ModelName;
                     NamingFormat = string.IsNullOrWhiteSpace(data.NamingFormat) ? "{Title} ({Year})" : data.NamingFormat;
                     PreferredLanguage = data.PreferredLanguage;
                 }
@@ -61,5 +112,14 @@ public class FileSettingsService : ISettingsService
         }
     }
 
-    private record SettingsData(string? ApiKey, string ModelName, string NamingFormat, NamingLanguage PreferredLanguage);
+    private record SettingsData(
+        ApiProvider ApiProvider,
+        string? ApiKey,
+        string? GeminiApiKey,
+        string? OpenRouterApiKey,
+        List<string>? GeminiModels,
+        List<string>? OpenRouterModels,
+        string ModelName,
+        string NamingFormat,
+        NamingLanguage PreferredLanguage);
 }

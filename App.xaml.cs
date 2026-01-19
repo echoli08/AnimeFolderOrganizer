@@ -26,12 +26,17 @@ public partial class App : Application
 
         // Register Services
         services.AddSingleton<ISettingsService, FileSettingsService>();
-        // 注意: GeminiMetadataProvider 需要 API Key 才能正常運作，請至該檔案設定
-        services.AddSingleton<IMetadataProvider, GeminiMetadataProvider>(); 
+        // 注意: GeminiMetadataProvider 需要 API Key 才能正常運作
+        services.AddSingleton<GeminiMetadataProvider>();
+        services.AddSingleton<OpenRouterMetadataProvider>();
+        services.AddSingleton<IMetadataProvider, MetadataProviderRouter>();
         services.AddSingleton<IFolderPickerService, FolderPickerService>();
         services.AddSingleton<ITextConverter, VbTextConverter>();
         services.AddSingleton<HttpClient>();
-        services.AddSingleton<IModelCatalogService, GeminiModelCatalogService>();
+        services.AddSingleton<GeminiModelCatalogService>();
+        services.AddSingleton<OpenRouterModelCatalogService>();
+        services.AddSingleton<IModelCatalogService, ModelCatalogService>();
+        services.AddSingleton<IAnimeDbVerificationService, AnimeDbVerificationService>();
         services.AddSingleton<IHistoryDbService, HistoryDbService>();
 
         // Register ViewModels

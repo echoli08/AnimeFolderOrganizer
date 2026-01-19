@@ -23,35 +23,53 @@ public partial class MainViewModel : ObservableObject
     private readonly IFolderPickerService _folderPickerService;
     private readonly IServiceProvider _serviceProvider;
     private readonly ISettingsService _settingsService;
+    private readonly IModelCatalogService _modelCatalogService;
     private readonly ITextConverter _textConverter;
     private readonly IHistoryDbService _historyDbService;
+    private readonly IAnimeDbVerificationService _animeDbVerificationService;
     private readonly ICollectionView _folderView;
     private readonly Dictionary<string, Regex> _formatRegexCache = new(StringComparer.Ordinal);
+    private string _lastModelName = ModelDefaults.GeminiDefaultModel;
 
     public MainViewModel(
         IMetadataProvider metadataProvider,
         IFolderPickerService folderPickerService,
         IServiceProvider serviceProvider,
         ISettingsService settingsService,
+        IModelCatalogService modelCatalogService,
         ITextConverter textConverter,
-        IHistoryDbService historyDbService)
+        IHistoryDbService historyDbService,
+        IAnimeDbVerificationService animeDbVerificationService)
     {
         _metadataProvider = metadataProvider;
         _folderPickerService = folderPickerService;
         _serviceProvider = serviceProvider;
         _settingsService = settingsService;
+        _modelCatalogService = modelCatalogService;
         _textConverter = textConverter;
         _historyDbService = historyDbService;
+        _animeDbVerificationService = animeDbVerificationService;
         FolderList = new ObservableCollection<AnimeFolderInfo>();
         _folderView = CollectionViewSource.GetDefaultView(FolderList);
         _folderView.Filter = FilterFolder;
         HistoryItems = new ObservableCollection<HistoryItemViewModel>();
         PreferredLanguage = _settingsService.PreferredLanguage;
         NamingFormat = _settingsService.NamingFormat;
+        ApiProvider = _settingsService.ApiProvider;
+        ModelName = _settingsService.ModelName;
+        _lastModelName = string.IsNullOrWhiteSpace(ModelName) ? _lastModelName : ModelName;
+        ApplyProviderDefaults(ApiProvider);
+        LoadCachedModels(ApiProvider);
     }
 
     [ObservableProperty]
     private string _targetDirectory = string.Empty;
+
+    [ObservableProperty]
+    private ApiProvider _apiProvider = ApiProvider.Gemini;
+
+    [ObservableProperty]
+    private string _modelName = ModelDefaults.GeminiDefaultModel;
 
     [ObservableProperty]
     [NotifyCanExecuteChangedFor(nameof(SelectFolderCommand))]
@@ -96,6 +114,7 @@ public partial class MainViewModel : ObservableObject
 
     public ObservableCollection<AnimeFolderInfo> FolderList { get; }
     public ObservableCollection<HistoryItemViewModel> HistoryItems { get; }
+    public ObservableCollection<string> AvailableModels { get; } = new();
 
     [RelayCommand(CanExecute = nameof(CanExecuteAction))]
     private async Task SelectFolderAsync()
@@ -117,6 +136,25 @@ public partial class MainViewModel : ObservableObject
 
         PreferredLanguage = _settingsService.PreferredLanguage;
         NamingFormat = _settingsService.NamingFormat;
+        ModelName = _settingsService.ModelName;
+        ApiProvider = _settingsService.ApiProvider;
+        LoadCachedModels(ApiProvider);
+    }
+
+    [RelayCommand]
+    private async Task LoadModelsAsync()
+    {
+        var apiKey = GetApiKey(ApiProvider);
+        var models = await _modelCatalogService.GetAvailableModelsAsync(ApiProvider, apiKey, false);
+        AvailableModels.Clear();
+
+        if (models.Count == 0)
+        {
+            UpdateModelList(new[] { ModelName });
+            return;
+        }
+
+        UpdateModelList(models);
     }
 
     [RelayCommand]
@@ -270,9 +308,14 @@ public partial class MainViewModel : ObservableObject
                         info.TitleCN = result.TitleCN;
                         info.TitleTW = result.TitleTW;
                         info.TitleEN = result.TitleEN;
+                        info.Type = result.Type;
                         info.Year = result.Year;
                         info.MetadataId = result.Id;
-                        info.IsIdentified = IsValidMetadata(result);
+                        var verificationStatus = IsValidMetadata(result)
+                            ? await VerifyTitleAsync(result.TitleJP)
+                            : AnimeDbVerificationStatus.Failed;
+                        info.VerificationStatus = verificationStatus;
+                        info.IsIdentified = verificationStatus == AnimeDbVerificationStatus.Verified;
 
                         info.AnalyzedTitle = result.TitleTW ?? result.TitleCN ?? result.TitleJP ?? result.TitleEN;
                         info.SelectedTitle = GetPreferredTitle(info);
@@ -431,6 +474,122 @@ public partial class MainViewModel : ObservableObject
         return obj is AnimeFolderInfo info && !info.IsRenamed;
     }
 
+    partial void OnApiProviderChanged(ApiProvider value)
+    {
+        _settingsService.ApiProvider = value;
+        ApplyProviderDefaults(value);
+        LoadCachedModels(value);
+        _ = SaveSettingsAsync();
+    }
+
+    partial void OnModelNameChanged(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            ModelName = _lastModelName;
+            return;
+        }
+
+        _lastModelName = value;
+        _settingsService.ModelName = value;
+        EnsureModelInList(value);
+        _ = SaveSettingsAsync();
+    }
+
+    private void EnsureModelInList(string? modelName)
+    {
+        if (string.IsNullOrWhiteSpace(modelName)) return;
+        if (AvailableModels.Any(m => string.Equals(m, modelName, StringComparison.OrdinalIgnoreCase))) return;
+        AvailableModels.Add(modelName);
+    }
+
+    private async Task SaveSettingsAsync()
+    {
+        await _settingsService.SaveAsync();
+    }
+
+    private void UpdateModelList(IEnumerable<string> models)
+    {
+        var unique = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var name in models)
+        {
+            if (string.IsNullOrWhiteSpace(name)) continue;
+            if (unique.Add(name))
+            {
+                AvailableModels.Add(name);
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(ModelName) && !unique.Contains(ModelName))
+        {
+            AvailableModels.Add(ModelName);
+        }
+    }
+
+    private void LoadCachedModels(ApiProvider provider)
+    {
+        AvailableModels.Clear();
+        var cached = provider == ApiProvider.OpenRouter
+            ? _settingsService.OpenRouterModels
+            : _settingsService.GeminiModels;
+
+        if (cached != null && cached.Count > 0)
+        {
+            UpdateModelList(cached);
+        }
+        else
+        {
+            UpdateModelList(new[] { ModelName });
+        }
+
+        EnsureModelInList(ModelName);
+    }
+
+    private void ApplyProviderDefaults(ApiProvider provider)
+    {
+        if (string.IsNullOrWhiteSpace(ModelName))
+        {
+            ModelName = GetDefaultModel(provider);
+            return;
+        }
+
+        if (provider == ApiProvider.Gemini && !IsPrimaryGeminiModelName(ModelName))
+        {
+            ModelName = GetDefaultModel(provider);
+        }
+        else if (provider == ApiProvider.OpenRouter && IsGeminiModelName(ModelName))
+        {
+            ModelName = GetDefaultModel(provider);
+        }
+    }
+
+    private static bool IsGeminiModelName(string modelName)
+    {
+        return modelName.StartsWith("gemini-", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsPrimaryGeminiModelName(string modelName)
+    {
+        if (!IsGeminiModelName(modelName)) return false;
+        return modelName.Contains("-flash", StringComparison.OrdinalIgnoreCase)
+               || modelName.Contains("-pro", StringComparison.OrdinalIgnoreCase)
+               || modelName.Contains("-lite", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string GetDefaultModel(ApiProvider provider)
+    {
+        return provider == ApiProvider.OpenRouter
+            ? ModelDefaults.OpenRouterDefaultModel
+            : ModelDefaults.GeminiDefaultModel;
+    }
+
+    private string? GetApiKey(ApiProvider provider)
+    {
+        return provider == ApiProvider.OpenRouter
+            ? _settingsService.OpenRouterApiKey
+            : _settingsService.GeminiApiKey;
+    }
+
     private void RefreshFolderView()
     {
         _folderView.Refresh();
@@ -452,6 +611,7 @@ public partial class MainViewModel : ObservableObject
                 .Replace("\\{TitleCN\\}", ".+")
                 .Replace("\\{TitleJP\\}", ".+")
                 .Replace("\\{TitleEN\\}", ".+")
+                .Replace("\\{Type\\}", ".+")
                 .Replace("\\{Original\\}", ".+")
                 .Replace("\\{Year\\}", "\\\\d{4}");
 
@@ -594,6 +754,19 @@ public partial class MainViewModel : ObservableObject
     private static bool IsValidMetadata(AnimeMetadata metadata)
     {
         return !IsBlockedRenameId(metadata.Id);
+    }
+
+    private async Task<AnimeDbVerificationStatus> VerifyTitleAsync(string? title)
+    {
+        try
+        {
+            return await _animeDbVerificationService.VerifyTitleAsync(title);
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"AnimeDB verify failed: {ex}");
+            return AnimeDbVerificationStatus.Failed;
+        }
     }
 
     private static bool IsBlockedRenameId(string? id)

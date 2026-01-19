@@ -8,7 +8,7 @@ using System.Threading.Tasks;
 
 namespace AnimeFolderOrganizer.Services;
 
-public class GeminiModelCatalogService : IModelCatalogService
+public class GeminiModelCatalogService
 {
     private const string EndpointBase = "https://generativelanguage.googleapis.com/v1beta/models";
     private readonly HttpClient _httpClient;
@@ -21,14 +21,14 @@ public class GeminiModelCatalogService : IModelCatalogService
         _httpClient = httpClient;
     }
 
-    public async Task<IReadOnlyList<string>> GetAvailableModelsAsync(string? apiKey)
+    public async Task<IReadOnlyList<string>> GetAvailableModelsAsync(string? apiKey, bool forceRefresh)
     {
         if (string.IsNullOrWhiteSpace(apiKey)) return Array.Empty<string>();
 
         await _gate.WaitAsync();
         try
         {
-            if (DateTime.UtcNow - _cacheTimeUtc < TimeSpan.FromMinutes(10) && _cached.Count > 0)
+            if (!forceRefresh && DateTime.UtcNow - _cacheTimeUtc < TimeSpan.FromMinutes(10) && _cached.Count > 0)
             {
                 return _cached.OrderBy(x => x).ToList();
             }
@@ -86,14 +86,27 @@ public class GeminiModelCatalogService : IModelCatalogService
                 }
             } while (!string.IsNullOrWhiteSpace(pageToken));
 
-            _cached = models;
+            var filtered = models
+                .Where(IsPrimaryGeminiModel)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            _cached = filtered;
             _cacheTimeUtc = DateTime.UtcNow;
 
-            return models.OrderBy(x => x).ToList();
+            return filtered.OrderBy(x => x).ToList();
         }
         finally
         {
             _gate.Release();
         }
+    }
+
+    private static bool IsPrimaryGeminiModel(string name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return false;
+        if (!name.StartsWith("gemini-", StringComparison.OrdinalIgnoreCase)) return false;
+        return name.Contains("-flash", StringComparison.OrdinalIgnoreCase)
+               || name.Contains("-pro", StringComparison.OrdinalIgnoreCase)
+               || name.Contains("-lite", StringComparison.OrdinalIgnoreCase);
     }
 }

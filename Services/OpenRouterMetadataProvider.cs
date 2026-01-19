@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
@@ -12,13 +13,13 @@ using System.Threading.Tasks;
 namespace AnimeFolderOrganizer.Services;
 
 /// <summary>
-/// 使用 Google Gemini API 分析資料夾名稱
+/// 使用 OpenRouter API 分析資料夾名稱
 /// </summary>
-public partial class GeminiMetadataProvider : IMetadataProvider
+public partial class OpenRouterMetadataProvider : IMetadataProvider
 {
-    public string ProviderName => "Google Gemini";
-    
-    private const string EndpointBase = "https://generativelanguage.googleapis.com/v1beta/models";
+    public string ProviderName => "OpenRouter";
+
+    private const string Endpoint = "https://openrouter.ai/api/v1/chat/completions";
     private const int MaxRetryCount = 2;
     private const int CooldownMilliseconds = 1200;
     private const int BaseBackoffMilliseconds = 800;
@@ -28,7 +29,7 @@ public partial class GeminiMetadataProvider : IMetadataProvider
     private readonly SemaphoreSlim _requestGate = new(1, 1);
     private DateTime _lastRequestUtc = DateTime.MinValue;
 
-    public GeminiMetadataProvider(ISettingsService settingsService, HttpClient httpClient)
+    public OpenRouterMetadataProvider(ISettingsService settingsService, HttpClient httpClient)
     {
         _settingsService = settingsService;
         _httpClient = httpClient;
@@ -59,20 +60,25 @@ public partial class GeminiMetadataProvider : IMetadataProvider
         var prompt = BuildBatchPrompt(folderNames);
         var requestBody = new
         {
-            contents = new[]
+            model = modelName,
+            messages = new[]
             {
                 new
                 {
-                    parts = new[]
-                    {
-                        new { text = prompt }
-                    }
+                    role = "system",
+                    content = "You are a strict JSON generator. Return ONLY a JSON object that matches the schema."
+                },
+                new
+                {
+                    role = "user",
+                    content = prompt
                 }
-            }
+            },
+            temperature = 0.2
         };
 
         var jsonContent = JsonSerializer.Serialize(requestBody);
-        var (text, error) = await PostForTextAsync(modelName, apiKey, jsonContent);
+        var (text, error) = await PostForTextAsync(apiKey, jsonContent);
         if (error != null)
         {
             return BuildErrorList(folderNames.Count, error.Id, error.TitleTW);
@@ -83,7 +89,7 @@ public partial class GeminiMetadataProvider : IMetadataProvider
             return BuildEmptyList(folderNames.Count);
         }
 
-        var cleanText = CleanGeminiText(text);
+        var cleanText = CleanOpenRouterText(text);
         var parsed = TryParseBatch(cleanText);
         if (parsed == null)
         {
@@ -95,35 +101,41 @@ public partial class GeminiMetadataProvider : IMetadataProvider
 
     private static string NormalizeModelName(string? modelName)
     {
-        if (string.IsNullOrWhiteSpace(modelName)) return ModelDefaults.GeminiDefaultModel;
-        return modelName.StartsWith("models/", StringComparison.OrdinalIgnoreCase)
-            ? modelName.Substring("models/".Length)
-            : modelName.Trim();
+        if (string.IsNullOrWhiteSpace(modelName)) return ModelDefaults.OpenRouterDefaultModel;
+        return modelName.Trim();
     }
 
-    private async Task<(string? Text, AnimeMetadata? Error)> PostForTextAsync(string modelName, string apiKey, string jsonContent)
+    private async Task<(string? Text, AnimeMetadata? Error)> PostForTextAsync(string apiKey, string jsonContent)
     {
         for (var attempt = 0; attempt <= MaxRetryCount; attempt++)
         {
             try
             {
                 await WaitForCooldownAsync();
-                using var httpContent = new StringContent(jsonContent, Encoding.UTF8, "application/json");
-                var response = await _httpClient.PostAsync($"{EndpointBase}/{modelName}:generateContent?key={apiKey}", httpContent);
-                
+                using var request = new HttpRequestMessage(HttpMethod.Post, Endpoint);
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+                request.Headers.Add("HTTP-Referer", "https://localhost");
+                request.Headers.Add("X-Title", "AnimeFolderOrganizer");
+                request.Content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
+
+                using var response = await _httpClient.SendAsync(request);
                 if (!response.IsSuccessStatusCode)
                 {
                     var errorContent = await response.Content.ReadAsStringAsync();
-                    System.Diagnostics.Debug.WriteLine($"Gemini API Error: {response.StatusCode} - {errorContent}");
+                    System.Diagnostics.Debug.WriteLine($"OpenRouter API Error: {response.StatusCode} - {errorContent}");
+
+                    if (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden)
+                    {
+                        return (null, BuildErrorMetadata("no-key", "請先設定 API Key"));
+                    }
+
+                    if (response.StatusCode == (HttpStatusCode)402)
+                    {
+                        return (null, BuildErrorMetadata("quota-exceeded", "配額不足或模型不在方案內"));
+                    }
 
                     if (response.StatusCode == (HttpStatusCode)429)
                     {
-                        // 例外處理：配額不足或速率限制，避免無限重試
-                        if (IsQuotaZero(errorContent))
-                        {
-                            return (null, BuildErrorMetadata("quota-exceeded", "配額不足或模型不在方案內"));
-                        }
-
                         var retrySeconds = GetRetryAfterSeconds(response, errorContent);
                         var backoffSeconds = GetBackoffSeconds(attempt);
                         var waitSeconds = retrySeconds.HasValue
@@ -141,29 +153,25 @@ public partial class GeminiMetadataProvider : IMetadataProvider
 
                     if (response.StatusCode == HttpStatusCode.NotFound)
                     {
-                        return (null, BuildErrorMetadata("model-not-found", "模型不存在或不支援 generateContent"));
+                        return (null, BuildErrorMetadata("model-not-found", "模型不存在或無法存取"));
                     }
 
                     return (null, null);
                 }
 
                 var responseString = await response.Content.ReadAsStringAsync();
-                
-                // 解析 Gemini 回傳的 JSON 結構 (這比較深層，需對應 Google API 回傳格式)
                 using var doc = JsonDocument.Parse(responseString);
                 var text = doc.RootElement
-                    .GetProperty("candidates")[0]
+                    .GetProperty("choices")[0]
+                    .GetProperty("message")
                     .GetProperty("content")
-                    .GetProperty("parts")[0]
-                    .GetProperty("text")
                     .GetString();
 
                 return (text, null);
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Gemini Provider Exception: {ex}");
-                // 記錄錯誤或回傳 null
+                System.Diagnostics.Debug.WriteLine($"OpenRouter Provider Exception: {ex}");
                 return (null, null);
             }
         }
@@ -229,7 +237,7 @@ Return ONLY a JSON object with this structure, no markdown:
 ";
     }
 
-    private static string CleanGeminiText(string text)
+    private static string CleanOpenRouterText(string text)
     {
         if (text.StartsWith("```json"))
         {
@@ -298,13 +306,6 @@ Return ONLY a JSON object with this structure, no markdown:
         }
 
         return list;
-    }
-
-    private static bool IsQuotaZero(string errorContent)
-    {
-        if (string.IsNullOrWhiteSpace(errorContent)) return false;
-        return errorContent.Contains("limit: 0", StringComparison.OrdinalIgnoreCase)
-               || errorContent.Contains("Quota exceeded", StringComparison.OrdinalIgnoreCase);
     }
 
     private static double? GetRetryAfterSeconds(HttpResponseMessage response, string errorContent)

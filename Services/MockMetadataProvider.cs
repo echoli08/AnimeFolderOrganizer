@@ -18,6 +18,7 @@ public class MockMetadataProvider : IMetadataProvider
             TitleCN: "葬送的芙莉莲",
             TitleTW: "葬送的芙莉蓮",
             TitleEN: "Frieren: Beyond Journey's End",
+            Type: "TV",
             Year: 2023,
             Confidence: 0.95
         ));
@@ -31,6 +32,7 @@ public class MockMetadataProvider : IMetadataProvider
             TitleCN: "葬送的芙莉莲",
             TitleTW: "葬送的芙莉蓮",
             TitleEN: "Frieren: Beyond Journey's End",
+            Type: "TV",
             Year: 2023,
             Confidence: 0.95
         )).ToList();

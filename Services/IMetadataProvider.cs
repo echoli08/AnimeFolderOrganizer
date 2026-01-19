@@ -9,6 +9,7 @@ public record AnimeMetadata(
     string TitleCN,
     string TitleTW,
     string TitleEN,
+    string Type,
     int? Year,
     double Confidence
 );
