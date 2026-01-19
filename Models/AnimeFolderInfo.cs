@@ -162,9 +162,11 @@ public partial class AnimeFolderInfo : ObservableObject
         void AddTitle(string? title)
         {
             if (string.IsNullOrWhiteSpace(title)) return;
-            if (exists.Add(title))
+            var trimmed = title.Trim();
+            if (trimmed.Length == 0) return;
+            if (exists.Add(trimmed))
             {
-                ordered.Add(title);
+                ordered.Add(trimmed);
             }
         }
 
@@ -186,6 +188,10 @@ public partial class AnimeFolderInfo : ObservableObject
 
     partial void OnSelectedTitleChanged(string? value)
     {
-        UpdateAvailableTitles();
+        if (string.IsNullOrWhiteSpace(value)) return;
+        var trimmed = value.Trim();
+        if (trimmed.Length == 0) return;
+        if (AvailableTitles.Any(title => string.Equals(title, trimmed, StringComparison.OrdinalIgnoreCase))) return;
+        AvailableTitles.Add(trimmed);
     }
 }
