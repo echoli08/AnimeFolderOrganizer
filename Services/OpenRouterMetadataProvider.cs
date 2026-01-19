@@ -214,6 +214,9 @@ public partial class OpenRouterMetadataProvider : IMetadataProvider
 
         return $@"
 Analyze the following anime folder names and extract the metadata for each.
+You must identify the official anime title. For TitleCN/TitleTW, return official Chinese release titles only.
+Do NOT machine-translate from Japanese or from the folder name. Do NOT convert pinyin to Japanese.
+If an official Chinese title is unknown, leave TitleCN/TitleTW as an empty string.
 
 Folder Names:
 {string.Join("\n", lines)}
