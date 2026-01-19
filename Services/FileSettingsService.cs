@@ -13,6 +13,7 @@ public class FileSettingsService : ISettingsService
     private readonly string _filePath;
     private string? _geminiApiKey;
     private string? _openRouterApiKey;
+    private string? _tmdbApiKey;
 
     public ApiProvider ApiProvider { get; set; } = ApiProvider.Gemini;
     public string? GeminiApiKey
@@ -25,6 +26,12 @@ public class FileSettingsService : ISettingsService
     {
         get => _openRouterApiKey;
         set => _openRouterApiKey = value;
+    }
+
+    public string? TmdbApiKey
+    {
+        get => _tmdbApiKey;
+        set => _tmdbApiKey = value;
     }
 
     public string? ApiKey
@@ -65,6 +72,7 @@ public class FileSettingsService : ISettingsService
                 ApiKey,
                 GeminiApiKey,
                 OpenRouterApiKey,
+                TmdbApiKey,
                 GeminiModels,
                 OpenRouterModels,
                 ModelName,
@@ -95,6 +103,7 @@ public class FileSettingsService : ISettingsService
                     OpenRouterApiKey = string.IsNullOrWhiteSpace(data.OpenRouterApiKey)
                         ? (data.ApiProvider == ApiProvider.OpenRouter ? legacyKey : null)
                         : data.OpenRouterApiKey;
+                    TmdbApiKey = data.TmdbApiKey;
                     GeminiModels = data.GeminiModels ?? new List<string>();
                     OpenRouterModels = data.OpenRouterModels ?? new List<string>();
                     var defaultModel = data.ApiProvider == ApiProvider.OpenRouter
@@ -117,6 +126,7 @@ public class FileSettingsService : ISettingsService
         string? ApiKey,
         string? GeminiApiKey,
         string? OpenRouterApiKey,
+        string? TmdbApiKey,
         List<string>? GeminiModels,
         List<string>? OpenRouterModels,
         string ModelName,

@@ -76,6 +76,13 @@
                     </StackPanel>
                 </GroupBox>
 
+                <GroupBox Header="TMDB API Key" Margin="0,4,0,0">
+                    <StackPanel Margin="6">
+                        <TextBox Text="{Binding TmdbApiKey, UpdateSourceTrigger=PropertyChanged}" Padding="5"/>
+                        <TextBlock Text="用於官方語系名稱查詢（TMDB → Bangumi → AniList）" FontSize="11" Foreground="Gray" Margin="0,4,0,0"/>
+                    </StackPanel>
+                </GroupBox>
+
                 <Grid Margin="0,4,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>

@@ -24,12 +24,13 @@ public partial class MainViewModel : ObservableObject
     private readonly IServiceProvider _serviceProvider;
     private readonly ISettingsService _settingsService;
     private readonly IModelCatalogService _modelCatalogService;
-    private readonly ITextConverter _textConverter;
     private readonly IHistoryDbService _historyDbService;
     private readonly IAnimeDbVerificationService _animeDbVerificationService;
+    private readonly IOfficialTitleLookupService _officialTitleLookupService;
     private readonly ICollectionView _folderView;
     private readonly Dictionary<string, Regex> _formatRegexCache = new(StringComparer.Ordinal);
     private string _lastModelName = ModelDefaults.GeminiDefaultModel;
+    private const int MaxScanLogEntries = 400;
 
     public MainViewModel(
         IMetadataProvider metadataProvider,
@@ -37,18 +38,18 @@ public partial class MainViewModel : ObservableObject
         IServiceProvider serviceProvider,
         ISettingsService settingsService,
         IModelCatalogService modelCatalogService,
-        ITextConverter textConverter,
         IHistoryDbService historyDbService,
-        IAnimeDbVerificationService animeDbVerificationService)
+        IAnimeDbVerificationService animeDbVerificationService,
+        IOfficialTitleLookupService officialTitleLookupService)
     {
         _metadataProvider = metadataProvider;
         _folderPickerService = folderPickerService;
         _serviceProvider = serviceProvider;
         _settingsService = settingsService;
         _modelCatalogService = modelCatalogService;
-        _textConverter = textConverter;
         _historyDbService = historyDbService;
         _animeDbVerificationService = animeDbVerificationService;
+        _officialTitleLookupService = officialTitleLookupService;
         FolderList = new ObservableCollection<AnimeFolderInfo>();
         _folderView = CollectionViewSource.GetDefaultView(FolderList);
         _folderView.Filter = FilterFolder;
@@ -115,6 +116,7 @@ public partial class MainViewModel : ObservableObject
     public ObservableCollection<AnimeFolderInfo> FolderList { get; }
     public ObservableCollection<HistoryItemViewModel> HistoryItems { get; }
     public ObservableCollection<string> AvailableModels { get; } = new();
+    public ObservableCollection<string> ScanLogs { get; } = new();
 
     [RelayCommand(CanExecute = nameof(CanExecuteAction))]
     private async Task SelectFolderAsync()
@@ -240,6 +242,8 @@ public partial class MainViewModel : ObservableObject
         if (string.IsNullOrWhiteSpace(TargetDirectory) || !Directory.Exists(TargetDirectory))
         {
             StatusMessage = "請選擇有效的資料夾路徑";
+            ScanLogs.Clear();
+            AddScanLog("掃描中止：資料夾路徑無效");
             return;
         }
 
@@ -247,11 +251,19 @@ public partial class MainViewModel : ObservableObject
         {
             IsBusy = true;
             StatusMessage = "正在掃描與識別資料夾 (可能需要一些時間)...";
+            ScanLogs.Clear();
+            AddScanLog($"開始掃描: {TargetDirectory}");
             FolderList.Clear();
 
             var directories = await Task.Run(() => Directory.GetDirectories(TargetDirectory));
             var dirInfos = directories.Select(d => new DirectoryInfo(d)).ToList();
+            AddScanLog($"取得子資料夾數量: {dirInfos.Count}");
+            if (dirInfos.Count == 0)
+            {
+                AddScanLog("目錄下沒有子資料夾");
+            }
             var renamedPaths = await _historyDbService.GetRenamedPathSetAsync();
+            AddScanLog($"歷史已更名數量: {renamedPaths.Count}");
             const int batchSize = 10;
             ScanProgress = 0;
             ScanProgressText = $"0/{dirInfos.Count}";
@@ -259,6 +271,8 @@ public partial class MainViewModel : ObservableObject
 
             var pending = new List<DirectoryInfo>();
             var processed = 0;
+            var renamedCount = 0;
+            var formattedCount = 0;
 
             foreach (var dirInfo in dirInfos)
             {
@@ -267,6 +281,14 @@ public partial class MainViewModel : ObservableObject
 
                 if (isRenamed || isFormatted)
                 {
+                    if (isRenamed)
+                    {
+                        renamedCount++;
+                    }
+                    else if (isFormatted)
+                    {
+                        formattedCount++;
+                    }
                     var info = new AnimeFolderInfo(dirInfo.FullName, dirInfo.Name)
                     {
                         NamingFormat = NamingFormat,
@@ -287,11 +309,19 @@ public partial class MainViewModel : ObservableObject
                 pending.Add(dirInfo);
             }
 
+            AddScanLog($"略過判定: 已更名 {renamedCount}，符合格式 {formattedCount}，待辨識 {pending.Count}");
+            AddScanLog($"顯示已更名資料夾: {(ShowRenamedFolders ? "是" : "否")}");
+            if (!ShowRenamedFolders && pending.Count == 0 && renamedCount + formattedCount > 0)
+            {
+                AddScanLog("目前設定不顯示已更名資料夾，清單可能為空");
+            }
+
             for (var i = 0; i < pending.Count; i += batchSize)
             {
                 var batch = pending.Skip(i).Take(batchSize).ToList();
                 var names = batch.Select(d => d.Name).ToList();
                 var results = await _metadataProvider.AnalyzeBatchAsync(names);
+                AddScanLog($"辨識批次 {i / batchSize + 1}: {batch.Count} 筆，回傳 {results.Count} 筆");
 
                 for (var j = 0; j < batch.Count; j++)
                 {
@@ -304,22 +334,15 @@ public partial class MainViewModel : ObservableObject
                     var result = j < results.Count ? results[j] : null;
                     if (result != null)
                     {
-                        info.TitleJP = result.TitleJP;
-                        info.TitleCN = result.TitleCN;
-                        info.TitleTW = result.TitleTW;
-                        info.TitleEN = result.TitleEN;
-                        info.Type = result.Type;
-                        info.Year = result.Year;
-                        info.MetadataId = result.Id;
-                        var verificationStatus = IsValidMetadata(result)
-                            ? await VerifyTitleAsync(result.TitleJP)
-                            : AnimeDbVerificationStatus.Failed;
-                        info.VerificationStatus = verificationStatus;
-                        info.IsIdentified = verificationStatus == AnimeDbVerificationStatus.Verified;
-
-                        info.AnalyzedTitle = result.TitleTW ?? result.TitleCN ?? result.TitleJP ?? result.TitleEN;
-                        info.SelectedTitle = GetPreferredTitle(info);
-                        info.UpdateAvailableTitles();
+                        if (IsBlockedRenameId(result.Id))
+                        {
+                            AddScanLog($"辨識回傳錯誤: {dirInfo.Name} ({result.Id})");
+                        }
+                        await ApplyMetadataAsync(info, result);
+                    }
+                    else
+                    {
+                        AddScanLog($"無辨識結果: {dirInfo.Name}");
                     }
 
                     FolderList.Add(info);
@@ -332,10 +355,12 @@ public partial class MainViewModel : ObservableObject
             }
 
             StatusMessage = $"掃描完成，共找到 {FolderList.Count} 個資料夾";
+            AddScanLog($"掃描完成，共找到 {FolderList.Count} 個資料夾");
         }
         catch (Exception ex)
         {
             StatusMessage = $"掃描發生錯誤: {ex.Message}";
+            AddScanLog($"掃描發生錯誤: {ex.Message}");
         }
         finally
         {
@@ -361,23 +386,43 @@ public partial class MainViewModel : ObservableObject
                 return;
             }
 
-            info.TitleJP = result.TitleJP;
-            info.TitleCN = result.TitleCN;
-            info.TitleTW = result.TitleTW;
-            info.TitleEN = result.TitleEN;
-            info.Type = result.Type;
-            info.Year = result.Year;
-            info.MetadataId = result.Id;
+            await ApplyMetadataAsync(info, result);
 
-            var verificationStatus = IsValidMetadata(result)
-                ? await VerifyTitleAsync(result.TitleJP)
-                : AnimeDbVerificationStatus.Failed;
-            info.VerificationStatus = verificationStatus;
-            info.IsIdentified = verificationStatus == AnimeDbVerificationStatus.Verified;
+            StatusMessage = $"重新辨識完成: {info.OriginalFolderName}";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"重新辨識失敗: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
 
-            info.AnalyzedTitle = result.TitleTW ?? result.TitleCN ?? result.TitleJP ?? result.TitleEN;
-            info.SelectedTitle = GetPreferredTitle(info);
-            info.UpdateAvailableTitles();
+    [RelayCommand(CanExecute = nameof(CanExecuteAction))]
+    private async Task ReanalyzeByJapaneseTitleAsync(AnimeFolderInfo? info)
+    {
+        if (info == null) return;
+        if (string.IsNullOrWhiteSpace(info.TitleJP))
+        {
+            StatusMessage = "缺少日文標題，無法重新辨識。";
+            return;
+        }
+
+        try
+        {
+            IsBusy = true;
+            StatusMessage = $"使用日文標題重新辨識中: {info.TitleJP}";
+
+            var result = await _metadataProvider.AnalyzeAsync(info.TitleJP);
+            if (result == null)
+            {
+                StatusMessage = $"重新辨識失敗: {info.TitleJP}";
+                return;
+            }
+
+            await ApplyMetadataAsync(info, result, confirmTitles: true, japaneseTitleOverride: info.TitleJP);
 
             StatusMessage = $"重新辨識完成: {info.OriginalFolderName}";
         }
@@ -643,6 +688,16 @@ public partial class MainViewModel : ObservableObject
         _folderView.Refresh();
     }
 
+    private void AddScanLog(string message)
+    {
+        var timestamp = DateTime.Now.ToString("HH:mm:ss");
+        ScanLogs.Add($"{timestamp} {message}");
+        while (ScanLogs.Count > MaxScanLogEntries)
+        {
+            ScanLogs.RemoveAt(0);
+        }
+    }
+
     private bool MatchesNamingFormat(string folderName, string format)
     {
         try
@@ -799,6 +854,58 @@ public partial class MainViewModel : ObservableObject
         StatusMessage = "還原完成";
     }
 
+    private async Task ApplyMetadataAsync(AnimeFolderInfo info, AnimeMetadata result, bool confirmTitles = false, string? japaneseTitleOverride = null)
+    {
+        info.TitleJP = result.TitleJP;
+        info.TitleCN = result.TitleCN;
+        info.TitleTW = result.TitleTW;
+        info.TitleEN = result.TitleEN;
+        info.Type = result.Type;
+        info.Year = result.Year;
+        info.MetadataId = result.Id;
+
+        var verificationTarget = string.IsNullOrWhiteSpace(result.TitleJP) ? info.TitleJP : result.TitleJP;
+        var verificationStatus = IsValidMetadata(result)
+            ? await VerifyTitleAsync(verificationTarget)
+            : AnimeDbVerificationStatus.Failed;
+        info.VerificationStatus = verificationStatus;
+        info.IsIdentified = verificationStatus == AnimeDbVerificationStatus.Verified;
+
+        info.AnalyzedTitle = result.TitleTW ?? result.TitleCN ?? result.TitleJP ?? result.TitleEN;
+        info.SelectedTitle = GetPreferredTitle(info);
+        info.UpdateAvailableTitles();
+
+        if (confirmTitles)
+        {
+            await ApplyOfficialTitlesAsync(info, japaneseTitleOverride ?? info.TitleJP);
+        }
+    }
+
+    private async Task ApplyOfficialTitlesAsync(AnimeFolderInfo info, string? japaneseTitle)
+    {
+        if (string.IsNullOrWhiteSpace(japaneseTitle)) return;
+
+        var official = await _officialTitleLookupService.LookupAsync(japaneseTitle);
+        if (official == null)
+        {
+            info.TitleCN = string.Empty;
+            info.TitleTW = string.Empty;
+            info.TitleEN = string.Empty;
+            info.AnalyzedTitle = japaneseTitle;
+            info.SelectedTitle = GetPreferredTitle(info);
+            info.UpdateAvailableTitles();
+            return;
+        }
+
+        info.TitleJP = FirstNonEmpty(official.TitleJP, info.TitleJP);
+        info.TitleCN = official.TitleCN ?? string.Empty;
+        info.TitleTW = official.TitleTW ?? string.Empty;
+        info.TitleEN = official.TitleEN ?? string.Empty;
+        info.AnalyzedTitle = FirstNonEmpty(info.TitleTW, info.TitleCN, info.TitleJP, info.TitleEN, japaneseTitle);
+        info.SelectedTitle = GetPreferredTitle(info);
+        info.UpdateAvailableTitles();
+    }
+
     private static bool IsValidMetadata(AnimeMetadata metadata)
     {
         return !IsBlockedRenameId(metadata.Id);
@@ -853,24 +960,30 @@ public partial class MainViewModel : ObservableObject
     {
         return PreferredLanguage switch
         {
-            NamingLanguage.TraditionalChinese => 
-                !string.IsNullOrWhiteSpace(info.TitleTW)
-                    ? info.TitleTW
-                    : _textConverter.ToTraditional(info.TitleCN ?? info.TitleJP ?? info.TitleEN),
-            NamingLanguage.SimplifiedChinese =>
-                !string.IsNullOrWhiteSpace(info.TitleCN)
-                    ? info.TitleCN
-                    : _textConverter.ToSimplified(info.TitleTW ?? info.TitleJP ?? info.TitleEN),
-            NamingLanguage.Japanese =>
-                !string.IsNullOrWhiteSpace(info.TitleJP)
-                    ? info.TitleJP
-                    : info.TitleTW ?? info.TitleCN ?? info.TitleEN,
-            NamingLanguage.English =>
-                !string.IsNullOrWhiteSpace(info.TitleEN)
-                    ? info.TitleEN
-                    : info.TitleJP ?? info.TitleTW ?? info.TitleCN,
-            _ => info.TitleTW ?? info.TitleCN ?? info.TitleJP ?? info.TitleEN
+            NamingLanguage.TraditionalChinese => FirstNonEmpty(
+                info.TitleTW, info.TitleCN, info.TitleJP, info.TitleEN, info.AnalyzedTitle, info.OriginalFolderName),
+            NamingLanguage.SimplifiedChinese => FirstNonEmpty(
+                info.TitleCN, info.TitleTW, info.TitleJP, info.TitleEN, info.AnalyzedTitle, info.OriginalFolderName),
+            NamingLanguage.Japanese => FirstNonEmpty(
+                info.TitleJP, info.TitleTW, info.TitleCN, info.TitleEN, info.AnalyzedTitle, info.OriginalFolderName),
+            NamingLanguage.English => FirstNonEmpty(
+                info.TitleEN, info.TitleJP, info.TitleTW, info.TitleCN, info.AnalyzedTitle, info.OriginalFolderName),
+            _ => FirstNonEmpty(
+                info.TitleTW, info.TitleCN, info.TitleJP, info.TitleEN, info.AnalyzedTitle, info.OriginalFolderName)
         };
+    }
+
+    private static string? FirstNonEmpty(params string?[] candidates)
+    {
+        foreach (var candidate in candidates)
+        {
+            if (!string.IsNullOrWhiteSpace(candidate))
+            {
+                return candidate;
+            }
+        }
+
+        return null;
     }
 
     private static bool IsPathLengthValid(string path)

@@ -14,8 +14,17 @@
 *   **多語言支援**：可選擇偏好的命名語言（繁體中文、日文、英文等）。
 *   **模型可用性偵測**：Gemini / OpenRouter 皆可偵測可用模型並快取至下次重新偵測。
 *   **作品驗證**：將辨識的日文名稱與 AnimeDB 進行比對，顯示「已辨識 / 驗證失敗」狀態。
+*   **官方名稱補正**：以 TMDB → Bangumi → AniList 取得官方語系名稱，僅在缺少繁中時以簡中轉繁。
 *   **歷史紀錄**：內建 SQLite 資料庫，記錄所有更名操作，方便追蹤。
 *   **預覽功能**：在實際更名更動前，提供新舊名稱對照預覽。
+*   **掃描記錄**：提供掃描與辨識的詳細紀錄，方便除錯。
+
+## ScreenShot
+
+![Main](ScreenShot/01.jpg)
+![Scan](ScreenShot/02.jpg)
+![History](ScreenShot/03.jpg)
+![Settings](ScreenShot/04.jpg)
 
 ## 技術堆疊
 
@@ -32,7 +41,10 @@
 
 1.  **作業系統**：Windows 10/11
 2.  **執行環境**：需安裝 [.NET 9.0 Desktop Runtime](https://dotnet.microsoft.com/en-us/download/dotnet/9.0)。
-3.  **API Key**：您需要一組 Google Gemini 或 OpenRouter API Key。可至 [Google AI Studio](https://aistudio.google.com/app/apikey) 或 [OpenRouter](https://openrouter.ai/keys) 申請。
+3.  **API Key**：
+    *   Google Gemini 或 OpenRouter API Key（必要）。
+    *   TMDB API Key（用於官方名稱補正，可選）。
+    *   Gemini 可至 [Google AI Studio](https://aistudio.google.com/app/apikey) 申請，OpenRouter 可至 [OpenRouter](https://openrouter.ai/keys) 申請。
 
 ### 建置步驟
 
@@ -59,6 +71,7 @@
 1.  **初次設定**：
     *   啟動程式後，點擊右上角的「設定」。
     *   在設定視窗輸入對應的 API Key（Gemini / OpenRouter 彼此獨立）。
+    *   若要啟用官方名稱補正，請輸入 TMDB API Key。
     *   按「偵測可用模型」，載入可用模型清單（會快取到下次重新偵測）。
     *   選擇 API 來源與模型，並設定命名格式。
     *   點擊「儲存並關閉」。

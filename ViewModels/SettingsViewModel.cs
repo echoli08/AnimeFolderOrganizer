@@ -27,6 +27,9 @@ public partial class SettingsViewModel : ObservableObject
     private string? _openRouterApiKey;
 
     [ObservableProperty]
+    private string? _tmdbApiKey;
+
+    [ObservableProperty]
     private string _modelName = ModelDefaults.GeminiDefaultModel;
 
     [ObservableProperty]
@@ -52,6 +55,7 @@ public partial class SettingsViewModel : ObservableObject
         ApiProvider = _settingsService.ApiProvider;
         GeminiApiKey = _settingsService.GeminiApiKey;
         OpenRouterApiKey = _settingsService.OpenRouterApiKey;
+        TmdbApiKey = _settingsService.TmdbApiKey;
         ModelName = _settingsService.ModelName;
         _lastModelName = string.IsNullOrWhiteSpace(ModelName) ? _lastModelName : ModelName;
         NamingFormat = _settingsService.NamingFormat;
@@ -294,6 +298,7 @@ public partial class SettingsViewModel : ObservableObject
         _settingsService.ApiProvider = ApiProvider;
         _settingsService.GeminiApiKey = GeminiApiKey;
         _settingsService.OpenRouterApiKey = OpenRouterApiKey;
+        _settingsService.TmdbApiKey = TmdbApiKey;
         _settingsService.GeminiModels = new List<string>(_geminiModelCache);
         _settingsService.OpenRouterModels = new List<string>(_openRouterModelCache);
         if (string.IsNullOrWhiteSpace(ModelName))

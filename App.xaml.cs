@@ -38,6 +38,7 @@ public partial class App : Application
         services.AddSingleton<IModelCatalogService, ModelCatalogService>();
         services.AddSingleton<IAnimeDbVerificationService, AnimeDbVerificationService>();
         services.AddSingleton<IHistoryDbService, HistoryDbService>();
+        services.AddSingleton<IOfficialTitleLookupService, OfficialTitleLookupService>();
 
         // Register ViewModels
         services.AddTransient<MainViewModel>();
