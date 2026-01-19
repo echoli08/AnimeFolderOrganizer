@@ -343,6 +343,54 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    [RelayCommand(CanExecute = nameof(CanExecuteAction))]
+    private async Task ReanalyzeFolderAsync(AnimeFolderInfo? info)
+    {
+        if (info == null) return;
+        if (string.IsNullOrWhiteSpace(info.OriginalFolderName)) return;
+
+        try
+        {
+            IsBusy = true;
+            StatusMessage = $"重新辨識中: {info.OriginalFolderName}";
+
+            var result = await _metadataProvider.AnalyzeAsync(info.OriginalFolderName);
+            if (result == null)
+            {
+                StatusMessage = $"重新辨識失敗: {info.OriginalFolderName}";
+                return;
+            }
+
+            info.TitleJP = result.TitleJP;
+            info.TitleCN = result.TitleCN;
+            info.TitleTW = result.TitleTW;
+            info.TitleEN = result.TitleEN;
+            info.Type = result.Type;
+            info.Year = result.Year;
+            info.MetadataId = result.Id;
+
+            var verificationStatus = IsValidMetadata(result)
+                ? await VerifyTitleAsync(result.TitleJP)
+                : AnimeDbVerificationStatus.Failed;
+            info.VerificationStatus = verificationStatus;
+            info.IsIdentified = verificationStatus == AnimeDbVerificationStatus.Verified;
+
+            info.AnalyzedTitle = result.TitleTW ?? result.TitleCN ?? result.TitleJP ?? result.TitleEN;
+            info.SelectedTitle = GetPreferredTitle(info);
+            info.UpdateAvailableTitles();
+
+            StatusMessage = $"重新辨識完成: {info.OriginalFolderName}";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"重新辨識失敗: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     // 批次處理已取代單筆處理流程
 
     [RelayCommand(CanExecute = nameof(CanExecuteAction))]

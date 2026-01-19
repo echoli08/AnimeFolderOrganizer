@@ -85,6 +85,16 @@
                 <DataGridTextColumn Header="年份" Binding="{Binding Year}" Width="60" IsReadOnly="True"/>
                 <DataGridTextColumn Header="手動ID" Binding="{Binding MetadataId, UpdateSourceTrigger=PropertyChanged}" Width="120"/>
                 <DataGridTextColumn Header="已辨識" Binding="{Binding IdentificationStatus}" Width="80" IsReadOnly="True"/>
+                <DataGridTemplateColumn Header="重新辨識" Width="90">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <Button Content="重新辨識"
+                                    Command="{Binding DataContext.ReanalyzeFolderCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                    CommandParameter="{Binding}"
+                                    Padding="6,2"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
             </DataGrid.Columns>
         </DataGrid>
 
