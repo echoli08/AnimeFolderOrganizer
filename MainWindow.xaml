@@ -113,6 +113,7 @@
 
                 <DataGridTextColumn Header="預覽結果" Binding="{Binding SuggestedName, Mode=OneWay}" Width="250" IsReadOnly="True" Foreground="Gray"/>
                 <DataGridTextColumn Header="年份" Binding="{Binding Year}" Width="60" IsReadOnly="True"/>
+                <DataGridTextColumn Header="類別" Binding="{Binding Type}" Width="80" IsReadOnly="True"/>
                 <DataGridTextColumn Header="已辨識" Binding="{Binding IdentificationStatus}" Width="80" IsReadOnly="True"/>
             </DataGrid.Columns>
         </DataGrid>
