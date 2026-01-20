@@ -14,6 +14,9 @@ public class FileSettingsService : ISettingsService
     private string? _geminiApiKey;
     private string? _openRouterApiKey;
     private string? _tmdbApiKey;
+    private string? _groqApiKey;
+    private string? _deepseekProxyApiKey;
+    private string? _deepseekProxyBaseUrl;
 
     public ApiProvider ApiProvider { get; set; } = ApiProvider.Gemini;
     public string? GeminiApiKey
@@ -34,16 +37,41 @@ public class FileSettingsService : ISettingsService
         set => _tmdbApiKey = value;
     }
 
+    public string? GroqApiKey
+    {
+        get => _groqApiKey;
+        set => _groqApiKey = value;
+    }
+
+    public string? DeepseekProxyApiKey
+    {
+        get => _deepseekProxyApiKey;
+        set => _deepseekProxyApiKey = value;
+    }
+
+    public string? DeepseekProxyBaseUrl
+    {
+        get => string.IsNullOrWhiteSpace(_deepseekProxyBaseUrl)
+            ? "https://api.chatanywhere.tech/v1"
+            : _deepseekProxyBaseUrl;
+        set => _deepseekProxyBaseUrl = value;
+    }
+
     public string? ApiKey
     {
-        get => ApiProvider == ApiProvider.OpenRouter ? _openRouterApiKey : _geminiApiKey;
+        get => ApiProvider switch
+        {
+            ApiProvider.OpenRouter => _openRouterApiKey,
+            ApiProvider.Gemini => _geminiApiKey,
+            _ => null
+        };
         set
         {
             if (ApiProvider == ApiProvider.OpenRouter)
             {
                 _openRouterApiKey = value;
             }
-            else
+            else if (ApiProvider == ApiProvider.Gemini)
             {
                 _geminiApiKey = value;
             }
@@ -51,6 +79,8 @@ public class FileSettingsService : ISettingsService
     }
     public List<string> GeminiModels { get; set; } = new();
     public List<string> OpenRouterModels { get; set; } = new();
+    public List<string> GroqModels { get; set; } = new();
+    public List<string> DeepseekProxyModels { get; set; } = new();
     public string ModelName { get; set; } = ModelDefaults.GeminiDefaultModel;
     public string NamingFormat { get; set; } = "{Title} ({Year})";
     public NamingLanguage PreferredLanguage { get; set; } = NamingLanguage.TraditionalChinese;
@@ -73,8 +103,13 @@ public class FileSettingsService : ISettingsService
                 GeminiApiKey,
                 OpenRouterApiKey,
                 TmdbApiKey,
+                GroqApiKey,
+                DeepseekProxyApiKey,
+                DeepseekProxyBaseUrl,
                 GeminiModels,
                 OpenRouterModels,
+                GroqModels,
+                DeepseekProxyModels,
                 ModelName,
                 NamingFormat,
                 PreferredLanguage);
@@ -104,11 +139,22 @@ public class FileSettingsService : ISettingsService
                         ? (data.ApiProvider == ApiProvider.OpenRouter ? legacyKey : null)
                         : data.OpenRouterApiKey;
                     TmdbApiKey = data.TmdbApiKey;
+                    GroqApiKey = data.GroqApiKey;
+                    DeepseekProxyApiKey = data.DeepseekProxyApiKey;
+                    DeepseekProxyBaseUrl = string.IsNullOrWhiteSpace(data.DeepseekProxyBaseUrl)
+                        ? "https://api.chatanywhere.tech/v1"
+                        : data.DeepseekProxyBaseUrl;
                     GeminiModels = data.GeminiModels ?? new List<string>();
                     OpenRouterModels = data.OpenRouterModels ?? new List<string>();
-                    var defaultModel = data.ApiProvider == ApiProvider.OpenRouter
-                        ? ModelDefaults.OpenRouterDefaultModel
-                        : ModelDefaults.GeminiDefaultModel;
+                    GroqModels = data.GroqModels ?? new List<string>();
+                    DeepseekProxyModels = data.DeepseekProxyModels ?? new List<string>();
+                    var defaultModel = data.ApiProvider switch
+                    {
+                        ApiProvider.OpenRouter => ModelDefaults.OpenRouterDefaultModel,
+                        ApiProvider.Groq => ModelDefaults.GroqDefaultModel,
+                        ApiProvider.DeepseekProxy => ModelDefaults.DeepseekProxyDefaultModel,
+                        _ => ModelDefaults.GeminiDefaultModel
+                    };
                     ModelName = string.IsNullOrWhiteSpace(data.ModelName) ? defaultModel : data.ModelName;
                     NamingFormat = string.IsNullOrWhiteSpace(data.NamingFormat) ? "{Title} ({Year})" : data.NamingFormat;
                     PreferredLanguage = data.PreferredLanguage;
@@ -127,8 +173,13 @@ public class FileSettingsService : ISettingsService
         string? GeminiApiKey,
         string? OpenRouterApiKey,
         string? TmdbApiKey,
+        string? GroqApiKey,
+        string? DeepseekProxyApiKey,
+        string? DeepseekProxyBaseUrl,
         List<string>? GeminiModels,
         List<string>? OpenRouterModels,
+        List<string>? GroqModels,
+        List<string>? DeepseekProxyModels,
         string ModelName,
         string NamingFormat,
         NamingLanguage PreferredLanguage);

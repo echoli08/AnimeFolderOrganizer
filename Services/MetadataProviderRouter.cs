@@ -9,15 +9,21 @@ public class MetadataProviderRouter : IMetadataProvider
     private readonly ISettingsService _settingsService;
     private readonly GeminiMetadataProvider _gemini;
     private readonly OpenRouterMetadataProvider _openRouter;
+    private readonly GroqMetadataProvider _groq;
+    private readonly DeepseekProxyMetadataProvider _deepseek;
 
     public MetadataProviderRouter(
         ISettingsService settingsService,
         GeminiMetadataProvider gemini,
-        OpenRouterMetadataProvider openRouter)
+        OpenRouterMetadataProvider openRouter,
+        GroqMetadataProvider groq,
+        DeepseekProxyMetadataProvider deepseek)
     {
         _settingsService = settingsService;
         _gemini = gemini;
         _openRouter = openRouter;
+        _groq = groq;
+        _deepseek = deepseek;
     }
 
     public string ProviderName => GetProvider().ProviderName;
@@ -34,8 +40,12 @@ public class MetadataProviderRouter : IMetadataProvider
 
     private IMetadataProvider GetProvider()
     {
-        return _settingsService.ApiProvider == ApiProvider.OpenRouter
-            ? _openRouter
-            : _gemini;
+        return _settingsService.ApiProvider switch
+        {
+            ApiProvider.OpenRouter => _openRouter,
+            ApiProvider.Groq => _groq,
+            ApiProvider.DeepseekProxy => _deepseek,
+            _ => _gemini
+        };
     }
 }

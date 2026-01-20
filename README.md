@@ -9,11 +9,11 @@
 
 ### 主要功能
 
-*   **AI 智慧辨識**：整合 Google Gemini / OpenRouter API，精準分析資料夾名稱中的動畫資訊。
+*   **AI 智慧辨識**：整合 Google Gemini / OpenRouter / Groq / DeepSeek 轉發 API，精準分析資料夾名稱中的動畫資訊。
 *   **批量處理**：一次掃描並處理多個資料夾。
 *   **自訂命名格式**：支援自訂命名規則（例如：`{Title} ({Year})`），並提供 `{Type}`（TV / OVA / 特別版 / 劇場版）。
 *   **多語言支援**：可選擇偏好的命名語言（繁體中文、日文、英文等）。
-*   **模型可用性偵測**：Gemini / OpenRouter 皆可偵測可用模型並快取至下次重新偵測。
+*   **模型可用性偵測**：Gemini / OpenRouter / Groq / DeepSeek 轉發 皆可偵測可用模型並快取至下次重新偵測。
 *   **作品驗證**：將辨識的日文名稱與 AnimeDB 進行比對，顯示「已辨識 / 驗證失敗」狀態。
 *   **官方名稱補正**：以 TMDB → Bangumi → AniList 取得官方語系名稱，僅在缺少繁中時以簡中轉繁。
 *   **歷史紀錄**：內建 SQLite 資料庫，記錄所有更名操作，方便追蹤。
@@ -21,10 +21,10 @@
 *   **掃描記錄**：提供掃描與辨識的詳細紀錄，方便除錯。
 
 ### 未來預計功能
-*   **接入DeepSeek等模型
-*   **資料夾歸檔
-*   **加入支援辨識一般電影
-*   **產生Metadata
+*   **接入DeepSeek等模型**
+*   **資料夾歸檔**
+*   **加入支援辨識一般電影**
+*   **產生Metadata**
 
 ## ScreenShot
 
@@ -40,7 +40,7 @@
 *   **架構**：MVVM (使用 CommunityToolkit.Mvvm)
 *   **依賴注入**：Microsoft.Extensions.DependencyInjection
 *   **資料庫**：SQLite (Microsoft.Data.Sqlite)
-*   **AI 服務**：Google Gemini API / OpenRouter
+*   **AI 服務**：Google Gemini API / OpenRouter / Groq / DeepSeek 轉發
 
 ## 安裝指南
 
@@ -49,9 +49,9 @@
 1.  **作業系統**：Windows 10/11
 2.  **執行環境**：需安裝 [.NET 9.0 Desktop Runtime](https://dotnet.microsoft.com/en-us/download/dotnet/9.0)。
 3.  **API Key**：
-    *   Google Gemini 或 OpenRouter API Key（必要）。
+    *   Google Gemini / OpenRouter / Groq / DeepSeek 轉發 其一（必要）。
     *   TMDB API Key（用於官方名稱補正，可選）。
-    *   Gemini 可至 [Google AI Studio](https://aistudio.google.com/app/apikey) 申請，OpenRouter 可至 [OpenRouter](https://openrouter.ai/keys) 申請。
+    *   Gemini 可至 [Google AI Studio](https://aistudio.google.com/app/apikey) 申請；OpenRouter 可至 [OpenRouter](https://openrouter.ai/keys) 申請；Groq 可至 [Groq Console](https://console.groq.com/keys) 申請；DeepSeek 轉發請參考 [GPT_API_free](https://github.com/chatanywhere/GPT_API_free)。
 
 ### 建置步驟
 
@@ -77,7 +77,8 @@
 
 1.  **初次設定**：
     *   啟動程式後，點擊右上角的「設定」。
-    *   在設定視窗輸入對應的 API Key（Gemini / OpenRouter 彼此獨立）。
+    *   在設定視窗的頁籤中輸入對應的 API Key。
+    *   若使用 DeepSeek 轉發，可調整 Base URL（預設為 `https://api.chatanywhere.tech/v1`）。
     *   若要啟用官方名稱補正，請輸入 TMDB API Key。
     *   按「偵測可用模型」，載入可用模型清單（會快取到下次重新偵測）。
     *   選擇 API 來源與模型，並設定命名格式。

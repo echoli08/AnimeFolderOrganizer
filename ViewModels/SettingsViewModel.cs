@@ -15,6 +15,8 @@ public partial class SettingsViewModel : ObservableObject
     private readonly IModelCatalogService _modelCatalogService;
     private readonly List<string> _geminiModelCache = new();
     private readonly List<string> _openRouterModelCache = new();
+    private readonly List<string> _groqModelCache = new();
+    private readonly List<string> _deepseekProxyModelCache = new();
     private string _lastModelName = ModelDefaults.GeminiDefaultModel;
 
     [ObservableProperty]
@@ -28,6 +30,15 @@ public partial class SettingsViewModel : ObservableObject
 
     [ObservableProperty]
     private string? _tmdbApiKey;
+
+    [ObservableProperty]
+    private string? _groqApiKey;
+
+    [ObservableProperty]
+    private string? _deepseekProxyApiKey;
+
+    [ObservableProperty]
+    private string? _deepseekProxyBaseUrl;
 
     [ObservableProperty]
     private string _modelName = ModelDefaults.GeminiDefaultModel;
@@ -56,12 +67,19 @@ public partial class SettingsViewModel : ObservableObject
         GeminiApiKey = _settingsService.GeminiApiKey;
         OpenRouterApiKey = _settingsService.OpenRouterApiKey;
         TmdbApiKey = _settingsService.TmdbApiKey;
+        GroqApiKey = _settingsService.GroqApiKey;
+        DeepseekProxyApiKey = _settingsService.DeepseekProxyApiKey;
+        DeepseekProxyBaseUrl = string.IsNullOrWhiteSpace(_settingsService.DeepseekProxyBaseUrl)
+            ? "https://api.chatanywhere.tech/v1"
+            : _settingsService.DeepseekProxyBaseUrl;
         ModelName = _settingsService.ModelName;
         _lastModelName = string.IsNullOrWhiteSpace(ModelName) ? _lastModelName : ModelName;
         NamingFormat = _settingsService.NamingFormat;
         PreferredLanguage = _settingsService.PreferredLanguage;
         _geminiModelCache.AddRange(_settingsService.GeminiModels);
         _openRouterModelCache.AddRange(_settingsService.OpenRouterModels);
+        _groqModelCache.AddRange(_settingsService.GroqModels);
+        _deepseekProxyModelCache.AddRange(_settingsService.DeepseekProxyModels);
         ModelListTitle = BuildModelListTitle(ApiProvider);
         ApplyProviderDefaults(ApiProvider);
         LoadCachedModels(ApiProvider);
@@ -142,9 +160,13 @@ public partial class SettingsViewModel : ObservableObject
         {
             Process.Start(new ProcessStartInfo
             {
-                FileName = provider == ApiProvider.OpenRouter
-                    ? "https://openrouter.ai/keys"
-                    : "https://aistudio.google.com/app/apikey",
+                FileName = provider switch
+                {
+                    ApiProvider.OpenRouter => "https://openrouter.ai/keys",
+                    ApiProvider.Groq => "https://console.groq.com/keys",
+                    ApiProvider.DeepseekProxy => "https://github.com/chatanywhere/GPT_API_free",
+                    _ => "https://aistudio.google.com/app/apikey"
+                },
                 UseShellExecute = true
             });
         }
@@ -178,6 +200,22 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 
+    partial void OnGroqApiKeyChanged(string? value)
+    {
+        if (ApiProvider == ApiProvider.Groq)
+        {
+            ApiTestStatus = string.Empty;
+        }
+    }
+
+    partial void OnDeepseekProxyApiKeyChanged(string? value)
+    {
+        if (ApiProvider == ApiProvider.DeepseekProxy)
+        {
+            ApiTestStatus = string.Empty;
+        }
+    }
+
     partial void OnModelNameChanged(string value)
     {
         if (string.IsNullOrWhiteSpace(value))
@@ -201,8 +239,22 @@ public partial class SettingsViewModel : ObservableObject
         if (provider == ApiProvider.Gemini && !IsPrimaryGeminiModelName(ModelName))
         {
             ModelName = GetDefaultModel(provider);
+            return;
         }
-        else if (provider == ApiProvider.OpenRouter && IsGeminiModelName(ModelName))
+
+        if (provider == ApiProvider.OpenRouter && IsGeminiModelName(ModelName))
+        {
+            ModelName = GetDefaultModel(provider);
+            return;
+        }
+
+        if (provider == ApiProvider.Groq && (IsGeminiModelName(ModelName) || IsOpenRouterModelName(ModelName) || IsDeepseekModelName(ModelName)))
+        {
+            ModelName = GetDefaultModel(provider);
+            return;
+        }
+
+        if (provider == ApiProvider.DeepseekProxy && !IsDeepseekModelName(ModelName))
         {
             ModelName = GetDefaultModel(provider);
         }
@@ -211,6 +263,16 @@ public partial class SettingsViewModel : ObservableObject
     private static bool IsGeminiModelName(string modelName)
     {
         return modelName.StartsWith("gemini-", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsOpenRouterModelName(string modelName)
+    {
+        return modelName.StartsWith("openrouter/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsDeepseekModelName(string modelName)
+    {
+        return modelName.StartsWith("deepseek", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsPrimaryGeminiModelName(string modelName)
@@ -223,28 +285,43 @@ public partial class SettingsViewModel : ObservableObject
 
     private static string GetDefaultModel(ApiProvider provider)
     {
-        return provider == ApiProvider.OpenRouter
-            ? ModelDefaults.OpenRouterDefaultModel
-            : ModelDefaults.GeminiDefaultModel;
+        return provider switch
+        {
+            ApiProvider.OpenRouter => ModelDefaults.OpenRouterDefaultModel,
+            ApiProvider.Groq => ModelDefaults.GroqDefaultModel,
+            ApiProvider.DeepseekProxy => ModelDefaults.DeepseekProxyDefaultModel,
+            _ => ModelDefaults.GeminiDefaultModel
+        };
     }
 
     private static string BuildModelListTitle(ApiProvider provider)
     {
-        return provider == ApiProvider.OpenRouter
-            ? "可選模型清單（免費額度，需先偵測）"
-            : "可選模型清單（需先偵測）";
+        return provider switch
+        {
+            ApiProvider.OpenRouter => "可選模型清單（免費額度，需先偵測）",
+            ApiProvider.Groq => "可選模型清單（Groq，需先偵測）",
+            ApiProvider.DeepseekProxy => "可選模型清單（DeepSeek 轉發，需先偵測）",
+            _ => "可選模型清單（需先偵測）"
+        };
     }
 
     [RelayCommand]
     private void ClearApiKey(ApiProvider provider)
     {
-        if (provider == ApiProvider.OpenRouter)
+        switch (provider)
         {
-            OpenRouterApiKey = string.Empty;
-        }
-        else
-        {
-            GeminiApiKey = string.Empty;
+            case ApiProvider.OpenRouter:
+                OpenRouterApiKey = string.Empty;
+                break;
+            case ApiProvider.Groq:
+                GroqApiKey = string.Empty;
+                break;
+            case ApiProvider.DeepseekProxy:
+                DeepseekProxyApiKey = string.Empty;
+                break;
+            default:
+                GeminiApiKey = string.Empty;
+                break;
         }
 
         if (provider == ApiProvider)
@@ -255,13 +332,25 @@ public partial class SettingsViewModel : ObservableObject
 
     private string? GetApiKey(ApiProvider provider)
     {
-        return provider == ApiProvider.OpenRouter ? OpenRouterApiKey : GeminiApiKey;
+        return provider switch
+        {
+            ApiProvider.OpenRouter => OpenRouterApiKey,
+            ApiProvider.Groq => GroqApiKey,
+            ApiProvider.DeepseekProxy => DeepseekProxyApiKey,
+            _ => GeminiApiKey
+        };
     }
 
     private void LoadCachedModels(ApiProvider provider)
     {
         AvailableModels.Clear();
-        var cached = provider == ApiProvider.OpenRouter ? _openRouterModelCache : _geminiModelCache;
+        var cached = provider switch
+        {
+            ApiProvider.OpenRouter => _openRouterModelCache,
+            ApiProvider.Groq => _groqModelCache,
+            ApiProvider.DeepseekProxy => _deepseekProxyModelCache,
+            _ => _geminiModelCache
+        };
         if (cached.Count > 0)
         {
             UpdateModelList(cached);
@@ -281,15 +370,24 @@ public partial class SettingsViewModel : ObservableObject
 
     private void UpdateModelCache(ApiProvider provider, IReadOnlyList<string> models)
     {
-        if (provider == ApiProvider.OpenRouter)
+        switch (provider)
         {
-            _openRouterModelCache.Clear();
-            _openRouterModelCache.AddRange(models);
-        }
-        else
-        {
-            _geminiModelCache.Clear();
-            _geminiModelCache.AddRange(models);
+            case ApiProvider.OpenRouter:
+                _openRouterModelCache.Clear();
+                _openRouterModelCache.AddRange(models);
+                break;
+            case ApiProvider.Groq:
+                _groqModelCache.Clear();
+                _groqModelCache.AddRange(models);
+                break;
+            case ApiProvider.DeepseekProxy:
+                _deepseekProxyModelCache.Clear();
+                _deepseekProxyModelCache.AddRange(models);
+                break;
+            default:
+                _geminiModelCache.Clear();
+                _geminiModelCache.AddRange(models);
+                break;
         }
     }
 
@@ -299,8 +397,13 @@ public partial class SettingsViewModel : ObservableObject
         _settingsService.GeminiApiKey = GeminiApiKey;
         _settingsService.OpenRouterApiKey = OpenRouterApiKey;
         _settingsService.TmdbApiKey = TmdbApiKey;
+        _settingsService.GroqApiKey = GroqApiKey;
+        _settingsService.DeepseekProxyApiKey = DeepseekProxyApiKey;
+        _settingsService.DeepseekProxyBaseUrl = DeepseekProxyBaseUrl;
         _settingsService.GeminiModels = new List<string>(_geminiModelCache);
         _settingsService.OpenRouterModels = new List<string>(_openRouterModelCache);
+        _settingsService.GroqModels = new List<string>(_groqModelCache);
+        _settingsService.DeepseekProxyModels = new List<string>(_deepseekProxyModelCache);
         if (string.IsNullOrWhiteSpace(ModelName))
         {
             ModelName = GetDefaultModel(ApiProvider);

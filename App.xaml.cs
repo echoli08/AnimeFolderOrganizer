@@ -29,12 +29,16 @@ public partial class App : Application
         // 注意: GeminiMetadataProvider 需要 API Key 才能正常運作
         services.AddSingleton<GeminiMetadataProvider>();
         services.AddSingleton<OpenRouterMetadataProvider>();
+        services.AddSingleton<GroqMetadataProvider>();
+        services.AddSingleton<DeepseekProxyMetadataProvider>();
         services.AddSingleton<IMetadataProvider, MetadataProviderRouter>();
         services.AddSingleton<IFolderPickerService, FolderPickerService>();
         services.AddSingleton<ITextConverter, VbTextConverter>();
         services.AddSingleton<HttpClient>();
         services.AddSingleton<GeminiModelCatalogService>();
         services.AddSingleton<OpenRouterModelCatalogService>();
+        services.AddSingleton<GroqModelCatalogService>();
+        services.AddSingleton<DeepseekProxyModelCatalogService>();
         services.AddSingleton<IModelCatalogService, ModelCatalogService>();
         services.AddSingleton<IAnimeDbVerificationService, AnimeDbVerificationService>();
         services.AddSingleton<IHistoryDbService, HistoryDbService>();

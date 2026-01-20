@@ -32,56 +32,100 @@
 
         <ScrollViewer VerticalScrollBarVisibility="Auto" Grid.Row="0">
             <StackPanel>
-                <GroupBox Header="Gemini API Key" Margin="0,4,0,0">
-                    <StackPanel Margin="6">
-                        <TextBox Text="{Binding GeminiApiKey, UpdateSourceTrigger=PropertyChanged}" Padding="5"/>
-                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                            <Button Command="{Binding OpenApiKeyPageCommand}"
-                                    CommandParameter="{x:Static models:ApiProvider.Gemini}"
-                                    Content="取得 Key"
-                                    Padding="10,5"
-                                    Margin="0,0,8,0"/>
-                            <Button Command="{Binding DetectModelsCommand}"
-                                    CommandParameter="{x:Static models:ApiProvider.Gemini}"
-                                    Content="偵測可用模型"
-                                    Padding="10,5"
-                                    Margin="0,0,8,0"/>
-                            <Button Command="{Binding ClearApiKeyCommand}"
-                                    CommandParameter="{x:Static models:ApiProvider.Gemini}"
-                                    Content="清除"
-                                    Padding="10,5"/>
+                <TabControl Margin="0,4,0,0">
+                    <TabItem Header="Gemini">
+                        <StackPanel Margin="8">
+                            <TextBox Text="{Binding GeminiApiKey, UpdateSourceTrigger=PropertyChanged}" Padding="5"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                <Button Command="{Binding OpenApiKeyPageCommand}"
+                                        CommandParameter="{x:Static models:ApiProvider.Gemini}"
+                                        Content="取得 Key"
+                                        Padding="10,5"
+                                        Margin="0,0,8,0"/>
+                                <Button Command="{Binding DetectModelsCommand}"
+                                        CommandParameter="{x:Static models:ApiProvider.Gemini}"
+                                        Content="偵測可用模型"
+                                        Padding="10,5"
+                                        Margin="0,0,8,0"/>
+                                <Button Command="{Binding ClearApiKeyCommand}"
+                                        CommandParameter="{x:Static models:ApiProvider.Gemini}"
+                                        Content="清除"
+                                        Padding="10,5"/>
+                            </StackPanel>
                         </StackPanel>
-                    </StackPanel>
-                </GroupBox>
-
-                <GroupBox Header="OpenRouter API Key" Margin="0,4,0,0">
-                    <StackPanel Margin="6">
-                        <TextBox Text="{Binding OpenRouterApiKey, UpdateSourceTrigger=PropertyChanged}" Padding="5"/>
-                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                            <Button Command="{Binding OpenApiKeyPageCommand}"
-                                    CommandParameter="{x:Static models:ApiProvider.OpenRouter}"
-                                    Content="取得 Key"
-                                    Padding="10,5"
-                                    Margin="0,0,8,0"/>
-                            <Button Command="{Binding DetectModelsCommand}"
-                                    CommandParameter="{x:Static models:ApiProvider.OpenRouter}"
-                                    Content="偵測可用模型"
-                                    Padding="10,5"
-                                    Margin="0,0,8,0"/>
-                            <Button Command="{Binding ClearApiKeyCommand}"
-                                    CommandParameter="{x:Static models:ApiProvider.OpenRouter}"
-                                    Content="清除"
-                                    Padding="10,5"/>
+                    </TabItem>
+                    <TabItem Header="OpenRouter">
+                        <StackPanel Margin="8">
+                            <TextBox Text="{Binding OpenRouterApiKey, UpdateSourceTrigger=PropertyChanged}" Padding="5"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                <Button Command="{Binding OpenApiKeyPageCommand}"
+                                        CommandParameter="{x:Static models:ApiProvider.OpenRouter}"
+                                        Content="取得 Key"
+                                        Padding="10,5"
+                                        Margin="0,0,8,0"/>
+                                <Button Command="{Binding DetectModelsCommand}"
+                                        CommandParameter="{x:Static models:ApiProvider.OpenRouter}"
+                                        Content="偵測可用模型"
+                                        Padding="10,5"
+                                        Margin="0,0,8,0"/>
+                                <Button Command="{Binding ClearApiKeyCommand}"
+                                        CommandParameter="{x:Static models:ApiProvider.OpenRouter}"
+                                        Content="清除"
+                                        Padding="10,5"/>
+                            </StackPanel>
                         </StackPanel>
-                    </StackPanel>
-                </GroupBox>
-
-                <GroupBox Header="TMDB API Key" Margin="0,4,0,0">
-                    <StackPanel Margin="6">
-                        <TextBox Text="{Binding TmdbApiKey, UpdateSourceTrigger=PropertyChanged}" Padding="5"/>
-                        <TextBlock Text="用於官方語系名稱查詢（TMDB → Bangumi → AniList）" FontSize="11" Foreground="Gray" Margin="0,4,0,0"/>
-                    </StackPanel>
-                </GroupBox>
+                    </TabItem>
+                    <TabItem Header="Groq">
+                        <StackPanel Margin="8">
+                            <TextBox Text="{Binding GroqApiKey, UpdateSourceTrigger=PropertyChanged}" Padding="5"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                <Button Command="{Binding OpenApiKeyPageCommand}"
+                                        CommandParameter="{x:Static models:ApiProvider.Groq}"
+                                        Content="取得 Key"
+                                        Padding="10,5"
+                                        Margin="0,0,8,0"/>
+                                <Button Command="{Binding DetectModelsCommand}"
+                                        CommandParameter="{x:Static models:ApiProvider.Groq}"
+                                        Content="偵測可用模型"
+                                        Padding="10,5"
+                                        Margin="0,0,8,0"/>
+                                <Button Command="{Binding ClearApiKeyCommand}"
+                                        CommandParameter="{x:Static models:ApiProvider.Groq}"
+                                        Content="清除"
+                                        Padding="10,5"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </TabItem>
+                    <TabItem Header="DeepSeek 轉發">
+                        <StackPanel Margin="8">
+                            <TextBox Text="{Binding DeepseekProxyApiKey, UpdateSourceTrigger=PropertyChanged}" Padding="5"/>
+                            <TextBox Text="{Binding DeepseekProxyBaseUrl, UpdateSourceTrigger=PropertyChanged}" Padding="5" Margin="0,6,0,0"/>
+                            <TextBlock Text="Base URL 範例: https://api.chatanywhere.tech/v1" FontSize="11" Foreground="Gray" Margin="0,4,0,0"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                <Button Command="{Binding OpenApiKeyPageCommand}"
+                                        CommandParameter="{x:Static models:ApiProvider.DeepseekProxy}"
+                                        Content="文件"
+                                        Padding="10,5"
+                                        Margin="0,0,8,0"/>
+                                <Button Command="{Binding DetectModelsCommand}"
+                                        CommandParameter="{x:Static models:ApiProvider.DeepseekProxy}"
+                                        Content="偵測可用模型"
+                                        Padding="10,5"
+                                        Margin="0,0,8,0"/>
+                                <Button Command="{Binding ClearApiKeyCommand}"
+                                        CommandParameter="{x:Static models:ApiProvider.DeepseekProxy}"
+                                        Content="清除"
+                                        Padding="10,5"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </TabItem>
+                    <TabItem Header="TMDB">
+                        <StackPanel Margin="8">
+                            <TextBox Text="{Binding TmdbApiKey, UpdateSourceTrigger=PropertyChanged}" Padding="5"/>
+                            <TextBlock Text="用於官方語系名稱查詢（TMDB → Bangumi → AniList）" FontSize="11" Foreground="Gray" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </TabItem>
+                </TabControl>
 
                 <Grid Margin="0,4,0,0">
                     <Grid.ColumnDefinitions>

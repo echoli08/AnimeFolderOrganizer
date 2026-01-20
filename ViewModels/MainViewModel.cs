@@ -622,9 +622,13 @@ public partial class MainViewModel : ObservableObject
     private void LoadCachedModels(ApiProvider provider)
     {
         AvailableModels.Clear();
-        var cached = provider == ApiProvider.OpenRouter
-            ? _settingsService.OpenRouterModels
-            : _settingsService.GeminiModels;
+        var cached = provider switch
+        {
+            ApiProvider.OpenRouter => _settingsService.OpenRouterModels,
+            ApiProvider.Groq => _settingsService.GroqModels,
+            ApiProvider.DeepseekProxy => _settingsService.DeepseekProxyModels,
+            _ => _settingsService.GeminiModels
+        };
 
         if (cached != null && cached.Count > 0)
         {
@@ -649,8 +653,22 @@ public partial class MainViewModel : ObservableObject
         if (provider == ApiProvider.Gemini && !IsPrimaryGeminiModelName(ModelName))
         {
             ModelName = GetDefaultModel(provider);
+            return;
         }
-        else if (provider == ApiProvider.OpenRouter && IsGeminiModelName(ModelName))
+
+        if (provider == ApiProvider.OpenRouter && IsGeminiModelName(ModelName))
+        {
+            ModelName = GetDefaultModel(provider);
+            return;
+        }
+
+        if (provider == ApiProvider.Groq && (IsGeminiModelName(ModelName) || IsOpenRouterModelName(ModelName) || IsDeepseekModelName(ModelName)))
+        {
+            ModelName = GetDefaultModel(provider);
+            return;
+        }
+
+        if (provider == ApiProvider.DeepseekProxy && !IsDeepseekModelName(ModelName))
         {
             ModelName = GetDefaultModel(provider);
         }
@@ -659,6 +677,16 @@ public partial class MainViewModel : ObservableObject
     private static bool IsGeminiModelName(string modelName)
     {
         return modelName.StartsWith("gemini-", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsOpenRouterModelName(string modelName)
+    {
+        return modelName.StartsWith("openrouter/", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsDeepseekModelName(string modelName)
+    {
+        return modelName.StartsWith("deepseek", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsPrimaryGeminiModelName(string modelName)
@@ -671,16 +699,24 @@ public partial class MainViewModel : ObservableObject
 
     private static string GetDefaultModel(ApiProvider provider)
     {
-        return provider == ApiProvider.OpenRouter
-            ? ModelDefaults.OpenRouterDefaultModel
-            : ModelDefaults.GeminiDefaultModel;
+        return provider switch
+        {
+            ApiProvider.OpenRouter => ModelDefaults.OpenRouterDefaultModel,
+            ApiProvider.Groq => ModelDefaults.GroqDefaultModel,
+            ApiProvider.DeepseekProxy => ModelDefaults.DeepseekProxyDefaultModel,
+            _ => ModelDefaults.GeminiDefaultModel
+        };
     }
 
     private string? GetApiKey(ApiProvider provider)
     {
-        return provider == ApiProvider.OpenRouter
-            ? _settingsService.OpenRouterApiKey
-            : _settingsService.GeminiApiKey;
+        return provider switch
+        {
+            ApiProvider.OpenRouter => _settingsService.OpenRouterApiKey,
+            ApiProvider.Groq => _settingsService.GroqApiKey,
+            ApiProvider.DeepseekProxy => _settingsService.DeepseekProxyApiKey,
+            _ => _settingsService.GeminiApiKey
+        };
     }
 
     private void RefreshFolderView()
