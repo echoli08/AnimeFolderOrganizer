@@ -7,7 +7,7 @@
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
         xmlns:models="clr-namespace:AnimeFolderOrganizer.Models"
         mc:Ignorable="d"
-        Title="設定" Height="660" Width="440"
+        Title="設定" Height="565" Width="440"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize">
 
@@ -160,7 +160,7 @@
                     <TextBlock Text="命名格式:"/>
                     <TextBox Text="{Binding NamingFormat}" Margin="0,4,0,0" Padding="5"/>
                     <TextBlock Text="可用標記: {Title}, {TitleTW}, {TitleCN}, {TitleJP}, {TitleEN}, {Type}, {Year}, {Original}" FontSize="11" Foreground="Gray" Margin="0,5,0,0"/>
-                    <TextBlock Text="TYPE 內容: TV / OVA / 特別版 / 劇場版" FontSize="11" Foreground="Gray" Margin="0,4,0,0"/>
+                    <TextBlock Text=" {Type} 內容: TV / OVA / 特別版 / 劇場版" FontSize="11" Foreground="Gray" Margin="0,4,0,0"/>
                 </StackPanel>
 
                 <StackPanel Margin="0,4,0,0">

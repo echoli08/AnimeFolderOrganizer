@@ -69,34 +69,23 @@
         </Grid>
 
         <!-- Main Content -->
-        <DataGrid Grid.Row="2" ItemsSource="{Binding FolderList}" AutoGenerateColumns="False" CanUserAddRows="False" Margin="0,0,0,10">
-            <DataGrid.RowStyle>
-                <Style TargetType="DataGridRow">
-                    <Setter Property="ContextMenu">
-                        <Setter.Value>
-                            <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
-                                <MenuItem Header="重新辨識"
-                                          Command="{Binding Data.ReanalyzeFolderCommand, Source={StaticResource RootViewModel}}"
-                                          CommandParameter="{Binding}"/>
-                                <MenuItem Header="以日文標題重新辨識"
-                                          Command="{Binding Data.ReanalyzeByJapaneseTitleCommand, Source={StaticResource RootViewModel}}"
-                                          CommandParameter="{Binding}">
-                                    <MenuItem.Style>
-                                        <Style TargetType="MenuItem">
-                                            <Setter Property="Visibility" Value="Collapsed"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding IsIdentified}" Value="True">
-                                                    <Setter Property="Visibility" Value="Visible"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </MenuItem.Style>
-                                </MenuItem>
-                            </ContextMenu>
-                        </Setter.Value>
-                    </Setter>
-                </Style>
-            </DataGrid.RowStyle>
+        <DataGrid Grid.Row="2"
+                  ItemsSource="{Binding FolderList}"
+                  AutoGenerateColumns="False"
+                  CanUserAddRows="False"
+                  SelectionMode="Extended"
+                  SelectionUnit="FullRow"
+                  Margin="0,0,0,10">
+            <DataGrid.ContextMenu>
+                <ContextMenu DataContext="{Binding PlacementTarget.DataContext, RelativeSource={RelativeSource Self}}">
+                    <MenuItem Header="重新辨識"
+                              Command="{Binding ReanalyzeFolderCommand}"
+                              CommandParameter="{Binding PlacementTarget.SelectedItems, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                    <MenuItem Header="以日文標題重新辨識"
+                              Command="{Binding ReanalyzeByJapaneseTitleCommand}"
+                              CommandParameter="{Binding PlacementTarget.SelectedItems, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                </ContextMenu>
+            </DataGrid.ContextMenu>
             <DataGrid.Columns>
                 <DataGridTextColumn Header="原始名稱" Binding="{Binding OriginalFolderName}" Width="250" IsReadOnly="True"/>
                 

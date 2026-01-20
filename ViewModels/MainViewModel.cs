@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Threading.Tasks;
@@ -369,26 +370,44 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand(CanExecute = nameof(CanExecuteAction))]
-    private async Task ReanalyzeFolderAsync(AnimeFolderInfo? info)
+    private async Task ReanalyzeFolderAsync(object? parameter)
     {
-        if (info == null) return;
-        if (string.IsNullOrWhiteSpace(info.OriginalFolderName)) return;
+        var targets = ResolveSelection(parameter, info => !string.IsNullOrWhiteSpace(info.OriginalFolderName));
+        if (targets.Count == 0)
+        {
+            StatusMessage = "請先選擇要重新辨識的資料夾。";
+            return;
+        }
 
         try
         {
             IsBusy = true;
-            StatusMessage = $"重新辨識中: {info.OriginalFolderName}";
+            StatusMessage = $"重新辨識中... 0/{targets.Count}";
 
-            var result = await _metadataProvider.AnalyzeAsync(info.OriginalFolderName);
-            if (result == null)
+            const int batchSize = 10;
+            var processed = 0;
+
+            for (var i = 0; i < targets.Count; i += batchSize)
             {
-                StatusMessage = $"重新辨識失敗: {info.OriginalFolderName}";
-                return;
+                var batch = targets.Skip(i).Take(batchSize).ToList();
+                var names = batch.Select(x => x.OriginalFolderName).ToList();
+                var results = await _metadataProvider.AnalyzeBatchAsync(names);
+
+                for (var j = 0; j < batch.Count; j++)
+                {
+                    var info = batch[j];
+                    var result = j < results.Count ? results[j] : null;
+                    if (result != null)
+                    {
+                        await ApplyMetadataAsync(info, result);
+                    }
+
+                    processed++;
+                    StatusMessage = $"重新辨識中... {processed}/{targets.Count}";
+                }
             }
 
-            await ApplyMetadataAsync(info, result);
-
-            StatusMessage = $"重新辨識完成: {info.OriginalFolderName}";
+            StatusMessage = $"重新辨識完成: {processed}/{targets.Count}";
         }
         catch (Exception ex)
         {
@@ -401,10 +420,10 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand(CanExecute = nameof(CanExecuteAction))]
-    private async Task ReanalyzeByJapaneseTitleAsync(AnimeFolderInfo? info)
+    private async Task ReanalyzeByJapaneseTitleAsync(object? parameter)
     {
-        if (info == null) return;
-        if (string.IsNullOrWhiteSpace(info.TitleJP))
+        var targets = ResolveSelection(parameter, info => !string.IsNullOrWhiteSpace(info.TitleJP));
+        if (targets.Count == 0)
         {
             StatusMessage = "缺少日文標題，無法重新辨識。";
             return;
@@ -413,18 +432,32 @@ public partial class MainViewModel : ObservableObject
         try
         {
             IsBusy = true;
-            StatusMessage = $"使用日文標題重新辨識中: {info.TitleJP}";
+            StatusMessage = $"使用日文標題重新辨識中... 0/{targets.Count}";
 
-            var result = await _metadataProvider.AnalyzeAsync(info.TitleJP);
-            if (result == null)
+            const int batchSize = 10;
+            var processed = 0;
+
+            for (var i = 0; i < targets.Count; i += batchSize)
             {
-                StatusMessage = $"重新辨識失敗: {info.TitleJP}";
-                return;
+                var batch = targets.Skip(i).Take(batchSize).ToList();
+                var names = batch.Select(x => x.TitleJP!).ToList();
+                var results = await _metadataProvider.AnalyzeBatchAsync(names);
+
+                for (var j = 0; j < batch.Count; j++)
+                {
+                    var info = batch[j];
+                    var result = j < results.Count ? results[j] : null;
+                    if (result != null)
+                    {
+                        await ApplyMetadataAsync(info, result, confirmTitles: true, japaneseTitleOverride: info.TitleJP);
+                    }
+
+                    processed++;
+                    StatusMessage = $"使用日文標題重新辨識中... {processed}/{targets.Count}";
+                }
             }
 
-            await ApplyMetadataAsync(info, result, confirmTitles: true, japaneseTitleOverride: info.TitleJP);
-
-            StatusMessage = $"重新辨識完成: {info.OriginalFolderName}";
+            StatusMessage = $"重新辨識完成: {processed}/{targets.Count}";
         }
         catch (Exception ex)
         {
@@ -787,6 +820,49 @@ public partial class MainViewModel : ObservableObject
         {
             System.Diagnostics.Debug.WriteLine($"AddHistory failed: {ex}");
         }
+    }
+
+    private static List<AnimeFolderInfo> ResolveSelection(object? parameter, Func<AnimeFolderInfo, bool> predicate)
+    {
+        var results = new List<AnimeFolderInfo>();
+        var seen = new HashSet<AnimeFolderInfo>();
+
+        void AddItem(AnimeFolderInfo info)
+        {
+            if (predicate(info) && seen.Add(info))
+            {
+                results.Add(info);
+            }
+        }
+
+        if (parameter is AnimeFolderInfo single)
+        {
+            AddItem(single);
+            return results;
+        }
+
+        if (parameter is IList list)
+        {
+            foreach (var item in list)
+            {
+                if (item is AnimeFolderInfo info)
+                {
+                    AddItem(info);
+                }
+            }
+
+            return results;
+        }
+
+        if (parameter is IEnumerable<AnimeFolderInfo> enumerable)
+        {
+            foreach (var info in enumerable)
+            {
+                AddItem(info);
+            }
+        }
+
+        return results;
     }
 
     private async Task LoadFolderSnapshotAsync(string path)
