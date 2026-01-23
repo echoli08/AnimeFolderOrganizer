@@ -1,7 +1,6 @@
 # Anime Folder Organizer (動畫資料夾整理工具)
 
-這是一個基於 WPF (.NET 9) 開發的桌面應用程式，利用 AI 服務（Google Gemini / OpenRouter）的語言理解能力，協助使用者智慧辨識並自動整理動畫資料夾名稱。
-本專案由Codex輔助完成。
+這是一個基於 WPF (.NET 9) 開發的桌面應用程式，利用 AI 服務（Google Gemini / OpenRouter / Groq / DeepSeek）的語言理解能力，協助使用者智慧辨識並自動整理動畫資料夾名稱。
 
 ## 專案概述
 
@@ -13,22 +12,22 @@
 *   **批量處理**：一次掃描並處理多個資料夾。
 *   **自訂命名格式**：支援自訂命名規則（例如：`{Title} ({Year})`），並提供 `{Type}`（TV / OVA / 特別版 / 劇場版）。
 *   **多語言支援**：可選擇偏好的命名語言（繁體中文、日文、英文等）。
-*   **模型可用性偵測**：Gemini / OpenRouter / Groq / DeepSeek 轉發 皆可偵測可用模型並快取至下次重新偵測。
+*   **模型可用性偵測**：自動偵測並快取可用的 AI 模型清單。
 *   **作品驗證**：將辨識的日文名稱與 AnimeDB 進行比對，顯示「已辨識 / 驗證失敗」狀態。
-*   **官方名稱補正**：以 TMDB → Bangumi → AniList 取得官方語系名稱，僅在缺少繁中時以簡中轉繁。
-*   **歷史紀錄**：內建 SQLite 資料庫，記錄所有更名操作，方便追蹤。
+*   **官方名稱補正**：整合 TMDB → Bangumi → AniList API，自動補全官方繁體中文、簡體中文與英文標題。
+*   **歷史紀錄**：內建 SQLite 資料庫，記錄所有更名操作，並支援還原功能。
 *   **預覽功能**：在實際更名更動前，提供新舊名稱對照預覽，並顯示動畫類別。
 *   **多選重新辨識**：支援多選資料夾批次重新辨識，減少 API 請求次數。
 *   **掃描記錄**：提供掃描與辨識的詳細紀錄，方便除錯。
 
 ### 未來預計功能
-*   **資料夾歸檔**
-*   **加入支援辨識一般電影**
-*   **產生Metadata**
+*   **資料夾歸檔**：自動依照年份或字母將資料夾歸檔。
+*   **一般電影支援**：擴充辨識邏輯以支援非動畫類電影。
+*   **產生 Metadata**：自動產生 `.nfo` 或 `tvshow.nfo` 檔案以供媒體伺服器（如 Plex, Emby）使用。
 
-### API注意事項
-目前僅測試過Gemini,Deepseek,OpenRouter部分模型，推薦使用Gemini,Deepseek。
-AI辨識無法做到100%準確,如辨識錯誤可重新辨識或換模型重新辨識，也可自己手動修正。
+### API 注意事項
+目前支援 Gemini, DeepSeek, Groq, OpenRouter 等多種 API 來源。
+AI 辨識無法保證 100% 準確，建議在執行改名透過預覽功能檢查，或使用內建的「重新辨識」功能進行修正。
 
 ## ScreenShot
 
@@ -41,10 +40,10 @@ AI辨識無法做到100%準確,如辨識錯誤可重新辨識或換模型重新�
 
 *   **平台**：Windows (WPF)
 *   **框架**：.NET 9.0
-*   **架構**：MVVM (使用 CommunityToolkit.Mvvm)
+*   **架構**：MVVM (CommunityToolkit.Mvvm)
 *   **依賴注入**：Microsoft.Extensions.DependencyInjection
 *   **資料庫**：SQLite (Microsoft.Data.Sqlite)
-*   **AI 服務**：Google Gemini API / OpenRouter / Groq / DeepSeek 轉發
+*   **AI 服務**：Google Gemini API / OpenRouter / Groq / DeepSeek Proxy
 
 ## 安裝指南
 
@@ -55,7 +54,8 @@ AI辨識無法做到100%準確,如辨識錯誤可重新辨識或換模型重新�
 3.  **API Key**：
     *   Google Gemini / OpenRouter / Groq / DeepSeek 轉發 其一（必要）。
     *   TMDB API Key（用於官方名稱補正，可選）。
-    *   Gemini 可至 [Google AI Studio](https://aistudio.google.com/app/apikey) 申請；OpenRouter 可至 [OpenRouter](https://openrouter.ai/keys) 申請；Groq 可至 [Groq Console](https://console.groq.com/keys) 申請；DeepSeek 轉發請參考 [GPT_API_free](https://github.com/chatanywhere/GPT_API_free)。
+    *   Gemini 可至 [Google AI Studio](https://aistudio.google.com/app/apikey) 申請；OpenRouter 可至 [OpenRouter](https://openrouter.ai/keys) 申請；Groq 可至 [Groq Console](https://console.groq.com/keys) 申請。
+    *   DeepSeek 轉發請參考 [GPT_API_free](https://github.com/chatanywhere/GPT_API_free)，支援切換 Base URL（預設為 `https://api.chatanywhere.org/v1` 或 `https://api.chatanywhere.tech/v1`）。
 
 ### 建置步驟
 
@@ -81,11 +81,10 @@ AI辨識無法做到100%準確,如辨識錯誤可重新辨識或換模型重新�
 
 1.  **初次設定**：
     *   啟動程式後，點擊右上角的「設定」。
-    *   在設定視窗的頁籤中輸入對應的 API Key。
-    *   若使用 DeepSeek 轉發，可調整 Base URL（預設為 `https://api.chatanywhere.tech/v1`）。
-    *   若要啟用官方名稱補正，請輸入 TMDB API Key。
-    *   按「偵測可用模型」，載入可用模型清單（會快取到下次重新偵測）。
-    *   選擇 API 來源與模型，並設定命名格式。
+    *   **API 金鑰設定**：在對應的頁籤中輸入 API Key，並點擊「偵測可用模型」載入模型清單。
+    *   **DeepSeek 設定**：若使用 DeepSeek 轉發，可選擇預設的 Base URL 或自行輸入。
+    *   **模型選擇**：選擇 API 來源與模型。
+    *   **一般設定**：設定命名格式與偏好語言。
     *   點擊「儲存並關閉」。
 
 2.  **掃描資料夾**：
@@ -93,7 +92,7 @@ AI辨識無法做到100%準確,如辨識錯誤可重新辨識或換模型重新�
     *   程式會列出該目錄下的子資料夾。
 
 3.  **掃描與辨識**：
-    *   點擊「掃描資料夾」，程式將呼叫 Gemini / OpenRouter API 取得建議名稱。
+    *   點擊「掃描資料夾」，程式將呼叫 AI API 取得建議名稱。
     *   作品名稱會與 AnimeDB 比對，欄位顯示「已辨識 / 驗證失敗」。
 
 4.  **套用更名**：
@@ -116,6 +115,3 @@ AI辨識無法做到100%準確,如辨識錯誤可重新辨識或換模型重新�
 ## 授權資訊
 
 本專案採用 [MIT License](LICENSE) 授權。詳細資訊請參閱 LICENSE 檔案。
-
----
-*注意：本專案使用 Google Gemini / OpenRouter API，使用量請遵循各平台的配額限制與服務條款。*

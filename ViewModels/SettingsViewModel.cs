@@ -59,6 +59,12 @@ public partial class SettingsViewModel : ObservableObject
 
     public ObservableCollection<string> AvailableModels { get; } = new();
 
+    public ObservableCollection<string> AvailableDeepseekBaseUrls { get; } = new()
+    {
+        "https://api.chatanywhere.org/v1",
+        "https://api.chatanywhere.tech/v1"
+    };
+
     public SettingsViewModel(ISettingsService settingsService, IModelCatalogService modelCatalogService)
     {
         _settingsService = settingsService;
@@ -70,7 +76,7 @@ public partial class SettingsViewModel : ObservableObject
         GroqApiKey = _settingsService.GroqApiKey;
         DeepseekProxyApiKey = _settingsService.DeepseekProxyApiKey;
         DeepseekProxyBaseUrl = string.IsNullOrWhiteSpace(_settingsService.DeepseekProxyBaseUrl)
-            ? "https://api.chatanywhere.tech/v1"
+            ? "https://api.chatanywhere.org/v1"
             : _settingsService.DeepseekProxyBaseUrl;
         ModelName = _settingsService.ModelName;
         _lastModelName = string.IsNullOrWhiteSpace(ModelName) ? _lastModelName : ModelName;

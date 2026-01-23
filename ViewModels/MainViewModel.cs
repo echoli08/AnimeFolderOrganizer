@@ -237,136 +237,152 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+
+    // 在 AnimeFolderOrganizer.ViewModels.MainViewModel 中
+
+    // [修正 1] Regex 定義應該獨立放在類別層級，不要加 [RelayCommand]
+    [GeneratedRegex(@"\[.*?\]|\(.*?\)")]
+    private static partial Regex BracketRegex();
+
+    // [修正 2] ScanFoldersAsync 才是 Command，需要加 [RelayCommand]
     [RelayCommand(CanExecute = nameof(CanExecuteAction))]
     private async Task ScanFoldersAsync()
     {
         if (string.IsNullOrWhiteSpace(TargetDirectory) || !Directory.Exists(TargetDirectory))
         {
             StatusMessage = "請選擇有效的資料夾路徑";
-            ScanLogs.Clear();
-            AddScanLog("掃描中止：資料夾路徑無效");
             return;
         }
 
         try
         {
             IsBusy = true;
-            StatusMessage = "正在掃描與識別資料夾 (可能需要一些時間)...";
+            StatusMessage = "正在掃描與識別資料夾...";
             ScanLogs.Clear();
             AddScanLog($"開始掃描: {TargetDirectory}");
             FolderList.Clear();
 
-            var directories = await Task.Run(() => Directory.GetDirectories(TargetDirectory));
-            var dirInfos = directories.Select(d => new DirectoryInfo(d)).ToList();
-            AddScanLog($"取得子資料夾數量: {dirInfos.Count}");
-            if (dirInfos.Count == 0)
-            {
-                AddScanLog("目錄下沒有子資料夾");
-            }
-            var renamedPaths = await _historyDbService.GetRenamedPathSetAsync();
-            AddScanLog($"歷史已更名數量: {renamedPaths.Count}");
-            const int batchSize = 10;
-            ScanProgress = 0;
-            ScanProgressText = $"0/{dirInfos.Count}";
-            _folderView.Refresh();
+            // 使用 Task.Run 避免 UI 凍結
+            var dirInfos = await Task.Run(() =>
+                new DirectoryInfo(TargetDirectory).GetDirectories().ToList());
 
-            var pending = new List<DirectoryInfo>();
-            var processed = 0;
-            var renamedCount = 0;
-            var formattedCount = 0;
+            var renamedPaths = await _historyDbService.GetRenamedPathSetAsync();
+
+            // 預先篩選需要辨識的清單
+            var pendingProcessing = new List<(AnimeFolderInfo Info, DirectoryInfo Dir)>();
+
+            int processedCount = 0;
+            int totalCount = dirInfos.Count;
+            ScanProgressText = $"0/{totalCount}";
 
             foreach (var dirInfo in dirInfos)
             {
                 var isRenamed = renamedPaths.Contains(dirInfo.FullName);
                 var isFormatted = MatchesNamingFormat(dirInfo.Name, NamingFormat);
 
+                var info = new AnimeFolderInfo(dirInfo.FullName, dirInfo.Name)
+                {
+                    NamingFormat = NamingFormat,
+                    IsRenamed = isRenamed || isFormatted,
+                    AnalyzedTitle = dirInfo.Name,
+                    SelectedTitle = dirInfo.Name
+                };
+                info.UpdateAvailableTitles();
+                FolderList.Add(info);
+
                 if (isRenamed || isFormatted)
                 {
-                    if (isRenamed)
-                    {
-                        renamedCount++;
-                    }
-                    else if (isFormatted)
-                    {
-                        formattedCount++;
-                    }
-                    var info = new AnimeFolderInfo(dirInfo.FullName, dirInfo.Name)
-                    {
-                        NamingFormat = NamingFormat,
-                        IsRenamed = true,
-                        AnalyzedTitle = dirInfo.Name,
-                        SelectedTitle = dirInfo.Name
-                    };
-                    info.UpdateAvailableTitles();
-                    FolderList.Add(info);
-
-                    processed++;
-                    ScanProgress = dirInfos.Count == 0 ? 0 : processed * 100.0 / dirInfos.Count;
-                    ScanProgressText = $"{processed}/{dirInfos.Count}";
-                    StatusMessage = $"正在掃描與識別... {processed}/{dirInfos.Count}";
+                    processedCount++;
                     continue;
                 }
 
-                pending.Add(dirInfo);
+                pendingProcessing.Add((info, dirInfo));
             }
 
-            AddScanLog($"略過判定: 已更名 {renamedCount}，符合格式 {formattedCount}，待辨識 {pending.Count}");
-            AddScanLog($"顯示已更名資料夾: {(ShowRenamedFolders ? "是" : "否")}");
-            if (!ShowRenamedFolders && pending.Count == 0 && renamedCount + formattedCount > 0)
+            // 批次處理邏輯
+            const int batchSize = 10;
+            for (var i = 0; i < pendingProcessing.Count; i += batchSize)
             {
-                AddScanLog("目前設定不顯示已更名資料夾，清單可能為空");
-            }
+                var batch = pendingProcessing.Skip(i).Take(batchSize).ToList();
+                var names = batch.Select(x => x.Dir.Name).ToList();
 
-            for (var i = 0; i < pending.Count; i += batchSize)
-            {
-                var batch = pending.Skip(i).Take(batchSize).ToList();
-                var names = batch.Select(d => d.Name).ToList();
+                // 1. 初次辨識 (使用原始名稱)
                 var results = await _metadataProvider.AnalyzeBatchAsync(names);
-                AddScanLog($"辨識批次 {i / batchSize + 1}: {batch.Count} 筆，回傳 {results.Count} 筆");
 
                 for (var j = 0; j < batch.Count; j++)
                 {
-                    var dirInfo = batch[j];
-                    var info = new AnimeFolderInfo(dirInfo.FullName, dirInfo.Name)
-                    {
-                        NamingFormat = NamingFormat
-                    };
-
+                    var (info, dirInfo) = batch[j];
                     var result = j < results.Count ? results[j] : null;
+
                     if (result != null)
                     {
-                        if (IsBlockedRenameId(result.Id))
-                        {
-                            AddScanLog($"辨識回傳錯誤: {dirInfo.Name} ({result.Id})");
-                        }
                         await ApplyMetadataAsync(info, result);
                     }
-                    else
+
+                    // 2. [重試機制] 如果驗證失敗，嘗試清理雜訊後再次辨識
+                    if (info.VerificationStatus == AnimeDbVerificationStatus.Failed)
                     {
-                        AddScanLog($"無辨識結果: {dirInfo.Name}");
+                        var cleanName = CleanFolderNameForRetry(dirInfo.Name);
+
+                        // 只有當清理後的名稱變短且不同時才重試，避免浪費 API
+                        if (!string.Equals(cleanName, dirInfo.Name, StringComparison.OrdinalIgnoreCase) && cleanName.Length > 2)
+                        {
+                            AddScanLog($"驗證失敗，嘗試清理雜訊重試: {cleanName}");
+
+                            // 單筆重試
+                            var retryResult = await _metadataProvider.AnalyzeAsync(cleanName);
+                            if (retryResult != null)
+                            {
+                                await ApplyMetadataAsync(info, retryResult);
+
+                                if (info.VerificationStatus == AnimeDbVerificationStatus.Verified)
+                                {
+                                    AddScanLog($"重試成功: {info.AnalyzedTitle}");
+                                }
+                            }
+                        }
                     }
 
-                    FolderList.Add(info);
+                    processedCount++;
                 }
 
-                processed += batch.Count;
-                ScanProgress = dirInfos.Count == 0 ? 0 : processed * 100.0 / dirInfos.Count;
-                ScanProgressText = $"{processed}/{dirInfos.Count}";
-                StatusMessage = $"正在掃描與識別... {processed}/{dirInfos.Count}";
+                ScanProgress = totalCount == 0 ? 0 : processedCount * 100.0 / totalCount;
+                ScanProgressText = $"{processedCount}/{totalCount}";
+                StatusMessage = $"正在掃描與識別... {processedCount}/{totalCount}";
             }
 
             StatusMessage = $"掃描完成，共找到 {FolderList.Count} 個資料夾";
-            AddScanLog($"掃描完成，共找到 {FolderList.Count} 個資料夾");
         }
         catch (Exception ex)
         {
             StatusMessage = $"掃描發生錯誤: {ex.Message}";
-            AddScanLog($"掃描發生錯誤: {ex.Message}");
+            AddScanLog($"錯誤: {ex.Message}");
         }
         finally
         {
             IsBusy = false;
         }
+    }
+
+    /// <summary>
+    /// 輔助方法：移除資料夾名稱中的括號與常見雜訊，保留核心標題
+    /// </summary>
+    private static string CleanFolderNameForRetry(string folderName)
+    {
+        if (string.IsNullOrWhiteSpace(folderName)) return string.Empty;
+
+        // 1. 使用 Regex 移除 [] 和 () 內的內容
+        var cleaned = BracketRegex().Replace(folderName, " ");
+
+        // 2. 移除常見的技術雜訊關鍵字
+        var noise = new[] { "1080p", "720p", "mkv", "mp4", "x264", "x265", "AAC", "BDRip", "WebRip", "AVC", "Hi10P" };
+        foreach (var n in noise)
+        {
+            cleaned = cleaned.Replace(n, " ", StringComparison.OrdinalIgnoreCase);
+        }
+
+        // 3. 移除多餘空白並修剪
+        return string.Join(" ", cleaned.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries)).Trim();
     }
 
     [RelayCommand(CanExecute = nameof(CanExecuteAction))]

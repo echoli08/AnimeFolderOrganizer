@@ -52,7 +52,7 @@ public class FileSettingsService : ISettingsService
     public string? DeepseekProxyBaseUrl
     {
         get => string.IsNullOrWhiteSpace(_deepseekProxyBaseUrl)
-            ? "https://api.chatanywhere.tech/v1"
+            ? "https://api.chatanywhere.org/v1"
             : _deepseekProxyBaseUrl;
         set => _deepseekProxyBaseUrl = value;
     }
@@ -142,7 +142,7 @@ public class FileSettingsService : ISettingsService
                     GroqApiKey = data.GroqApiKey;
                     DeepseekProxyApiKey = data.DeepseekProxyApiKey;
                     DeepseekProxyBaseUrl = string.IsNullOrWhiteSpace(data.DeepseekProxyBaseUrl)
-                        ? "https://api.chatanywhere.tech/v1"
+                        ? "https://api.chatanywhere.org/v1"
                         : data.DeepseekProxyBaseUrl;
                     GeminiModels = data.GeminiModels ?? new List<string>();
                     OpenRouterModels = data.OpenRouterModels ?? new List<string>();

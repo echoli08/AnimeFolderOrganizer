@@ -9,6 +9,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using AnimeFolderOrganizer.Models;
 
 namespace AnimeFolderOrganizer.Services;
 
@@ -56,7 +57,7 @@ public partial class GroqMetadataProvider : IMetadataProvider
             return Array.Empty<AnimeMetadata?>();
         }
 
-        var prompt = BuildBatchPrompt(folderNames);
+        var prompt = BuildUserPrompt(folderNames);
         var requestBody = new
         {
             model = modelName,
@@ -204,37 +205,13 @@ public partial class GroqMetadataProvider : IMetadataProvider
         return baseSeconds * Math.Pow(2, attempt) + jitter;
     }
 
-    private static string BuildBatchPrompt(IReadOnlyList<string> folderNames)
+    private static string BuildUserPrompt(IReadOnlyList<string> folderNames)
     {
         var lines = folderNames
             .Select((name, index) => $"[{index}] \"{name}\"");
 
-        return $@"
-Analyze the following anime folder names and extract the metadata for each.
-You must identify the official anime title. For TitleCN/TitleTW, return official Chinese release titles only.
-Do NOT machine-translate from Japanese or from the folder name. Do NOT convert pinyin to Japanese.
-If an official Chinese title is unknown, leave TitleCN/TitleTW as an empty string.
-
-Folder Names:
-{string.Join("\n", lines)}
-
-Return ONLY a JSON object with this structure, no markdown:
-{{
-  ""items"": [
-    {{
-      ""index"": 0,
-      ""id"": ""(Generate a unique hash or use bangumi id if found)"",
-      ""titleJP"": ""..."",
-      ""titleCN"": ""..."",
-      ""titleTW"": ""..."",
-      ""titleEN"": ""..."",
-      ""type"": ""TV|OVA|特別版|劇場版"",
-      ""year"": 2024,
-      ""confidence"": 0.95
-    }}
-  ]
-}}
-";
+        var folderInput = string.Join("\n", lines);
+        return ApiPrompt.BuildUserPrompt(folderInput);
     }
 
     private static string CleanText(string text)
