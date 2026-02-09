@@ -332,7 +332,7 @@ public sealed partial class OfficialTitleLookupService : IOfficialTitleLookupSer
         return withoutSpaces.ToLowerInvariant();
     }
 
-    [GeneratedRegex(@"[\(（\[【〈＜<].*?[\)）\]】〉＞>]", RegexOptions.Compiled)]
+    [GeneratedRegex(@"[\(（\[【〈＜<][^\)）\]】〉＞>]*?(\d{4}|\d{3,4}p|x\d+|BDRIP|BLURAY|WEB[- ]?DL|WEBRIP|HEVC|AVC|X265|X264|FIN|SP|\d+\s*-\s*\d+)[^\)）\]】〉＞>]*?[\)）\]】〉＞>]", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
     private static partial Regex BracketRegex();
 
     [GeneratedRegex(@"[!?！？:：\-\—\–\.]", RegexOptions.Compiled)]

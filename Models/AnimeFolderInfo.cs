@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace AnimeFolderOrganizer.Models;
 
@@ -14,6 +15,54 @@ public partial class AnimeFolderInfo : ObservableObject
 {
     public string OriginalPath { get; private set; }
     public string OriginalFolderName { get; private set; }
+
+    private string? _subShareRepoPath;
+
+    public string? SubShareRepoPath
+    {
+        get => _subShareRepoPath;
+        set
+        {
+            if (SetProperty(ref _subShareRepoPath, value))
+            {
+                OnPropertyChanged(nameof(HasSubShareMatch));
+                OnPropertyChanged(nameof(SubShareMatchStatus));
+                OnPropertyChanged(nameof(LocalSubtitleStatus));
+                OnPropertyChanged(nameof(RemoteSubtitleStatus));
+            }
+        }
+    }
+
+    public bool HasSubShareMatch => !string.IsNullOrWhiteSpace(SubShareRepoPath);
+
+    public string SubShareMatchStatus => HasSubShareMatch ? "有" : "無";
+
+    [ObservableProperty]
+    private string? _subShareMatchedTitle;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(LocalSubtitleStatus))]
+    private bool? _hasLocalSubtitles;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(RemoteSubtitleStatus))]
+    private bool? _hasRemoteSubtitles;
+
+    public string LocalSubtitleStatus => HasLocalSubtitles switch
+    {
+        _ when !HasSubShareMatch => "-",
+        true => "有",
+        false => "無",
+        _ => "未知"
+    };
+
+    public string RemoteSubtitleStatus => HasRemoteSubtitles switch
+    {
+        _ when !HasSubShareMatch => "-",
+        true => "有",
+        false => "無",
+        _ => "未知"
+    };
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SuggestedName))]
@@ -174,6 +223,7 @@ public partial class AnimeFolderInfo : ObservableObject
         AddTitle(TitleCN);
         AddTitle(TitleJP);
         AddTitle(TitleEN);
+        AddTitle(SubShareMatchedTitle);
         AddTitle(AnalyzedTitle);
         AddTitle(SelectedTitle);
 

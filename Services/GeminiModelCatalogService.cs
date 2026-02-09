@@ -1,13 +1,19 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 
+using AnimeFolderOrganizer.Models;
+
 namespace AnimeFolderOrganizer.Services;
 
+/// <summary>
+/// Google Gemini API 模型目錄服務實作。
+/// </summary>
 public class GeminiModelCatalogService
 {
     private const string EndpointBase = "https://generativelanguage.googleapis.com/v1beta/models";
@@ -23,7 +29,14 @@ public class GeminiModelCatalogService
 
     public async Task<IReadOnlyList<string>> GetAvailableModelsAsync(string? apiKey, bool forceRefresh)
     {
-        if (string.IsNullOrWhiteSpace(apiKey)) return Array.Empty<string>();
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            throw new ModelCatalogException(
+                ApiProvider.Gemini,
+                "驗證失敗",
+                "API 金鑰為空或格式無效",
+                null);
+        }
 
         await _gate.WaitAsync();
         try
@@ -47,8 +60,14 @@ public class GeminiModelCatalogService
                     using var response = await _httpClient.GetAsync(url);
                     if (!response.IsSuccessStatusCode)
                     {
+                        var statusCode = (int)response.StatusCode;
+                        var reason = GetStatusCodeMessage(response.StatusCode);
                         // 例外情境：API Key 無效或模型列表查詢失敗
-                        return Array.Empty<string>();
+                        throw new ModelCatalogException(
+                            ApiProvider.Gemini,
+                            "模型列表取得失敗",
+                            $"{reason} (HTTP {statusCode})",
+                            statusCode);
                     }
 
                     var json = await response.Content.ReadAsStringAsync();
@@ -79,9 +98,14 @@ public class GeminiModelCatalogService
                         ? tokenProp.GetString()
                         : null;
                 }
+                catch (ModelCatalogException)
+                {
+                    // 重新拋出 ModelCatalogException，不阻斷
+                    throw;
+                }
                 catch
                 {
-                    // 例外處理：單次查詢失敗不阻斷流程，回傳目前結果
+                    // 其他例外處理：單次查詢失敗不阻斷流程，回傳目前結果
                     break;
                 }
             } while (!string.IsNullOrWhiteSpace(pageToken));
@@ -108,5 +132,22 @@ public class GeminiModelCatalogService
         return name.Contains("-flash", StringComparison.OrdinalIgnoreCase)
                || name.Contains("-pro", StringComparison.OrdinalIgnoreCase)
                || name.Contains("-lite", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// 根據 HTTP 狀態碼取得簡短描述訊息。
+    /// </summary>
+    private static string GetStatusCodeMessage(HttpStatusCode statusCode)
+    {
+        return statusCode switch
+        {
+            HttpStatusCode.Unauthorized => "API 金鑰無效或已過期",
+            HttpStatusCode.Forbidden => "API 存取被拒，請檢查權限",
+            HttpStatusCode.NotFound => "模型端點不存在",
+            HttpStatusCode.TooManyRequests => "已超過 API 請求限制",
+            HttpStatusCode.InternalServerError => "伺服器內部錯誤",
+            HttpStatusCode.ServiceUnavailable => "服務暫時無法使用",
+            _ => "發生未預期的 HTTP 錯誤"
+        };
     }
 }

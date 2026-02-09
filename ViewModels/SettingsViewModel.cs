@@ -6,6 +6,8 @@ using AnimeFolderOrganizer.Models;
 using System.Collections.ObjectModel;
 using System.Collections.Generic;
 using System.Linq;
+using System.Globalization;
+using System.Threading;
 
 namespace AnimeFolderOrganizer.ViewModels;
 
@@ -13,11 +15,13 @@ public partial class SettingsViewModel : ObservableObject
 {
     private readonly ISettingsService _settingsService;
     private readonly IModelCatalogService _modelCatalogService;
+    private readonly IDialogService _dialogService;
+    private readonly ISubShareDbService _subShareDbService;
+    private readonly IFilePickerService _filePickerService;
     private readonly List<string> _geminiModelCache = new();
-    private readonly List<string> _openRouterModelCache = new();
-    private readonly List<string> _groqModelCache = new();
-    private readonly List<string> _deepseekProxyModelCache = new();
+    private readonly List<string> _customApiModelCache = new();
     private string _lastModelName = ModelDefaults.GeminiDefaultModel;
+    private bool _isSubShareDbBusy;
 
     [ObservableProperty]
     private ApiProvider _apiProvider = ApiProvider.Gemini;
@@ -26,19 +30,13 @@ public partial class SettingsViewModel : ObservableObject
     private string? _geminiApiKey;
 
     [ObservableProperty]
-    private string? _openRouterApiKey;
-
-    [ObservableProperty]
     private string? _tmdbApiKey;
 
     [ObservableProperty]
-    private string? _groqApiKey;
+    private string? _customApiKey;
 
     [ObservableProperty]
-    private string? _deepseekProxyApiKey;
-
-    [ObservableProperty]
-    private string? _deepseekProxyBaseUrl;
+    private string? _customApiBaseUrl;
 
     [ObservableProperty]
     private string _modelName = ModelDefaults.GeminiDefaultModel;
@@ -55,40 +53,97 @@ public partial class SettingsViewModel : ObservableObject
     [ObservableProperty]
     private string _apiTestStatus = string.Empty;
 
+    [ObservableProperty]
+    private string _subShareDbStatusText = string.Empty;
+
+    [ObservableProperty]
+    private string _subShareDbLastUpdatedText = "最近操作：—";
+
     public Action? CloseAction { get; set; }
 
     public ObservableCollection<string> AvailableModels { get; } = new();
 
-    public ObservableCollection<string> AvailableDeepseekBaseUrls { get; } = new()
-    {
-        "https://api.chatanywhere.org/v1",
-        "https://api.chatanywhere.tech/v1"
-    };
+    public ObservableCollection<string> AvailableCustomApiBaseUrls { get; } = new();
 
-    public SettingsViewModel(ISettingsService settingsService, IModelCatalogService modelCatalogService)
+    public SettingsViewModel(
+        ISettingsService settingsService,
+        IModelCatalogService modelCatalogService,
+        IDialogService dialogService,
+        ISubShareDbService subShareDbService,
+        IFilePickerService filePickerService)
     {
         _settingsService = settingsService;
         _modelCatalogService = modelCatalogService;
+        _dialogService = dialogService;
+        _subShareDbService = subShareDbService;
+        _filePickerService = filePickerService;
         ApiProvider = _settingsService.ApiProvider;
         GeminiApiKey = _settingsService.GeminiApiKey;
-        OpenRouterApiKey = _settingsService.OpenRouterApiKey;
         TmdbApiKey = _settingsService.TmdbApiKey;
-        GroqApiKey = _settingsService.GroqApiKey;
-        DeepseekProxyApiKey = _settingsService.DeepseekProxyApiKey;
-        DeepseekProxyBaseUrl = string.IsNullOrWhiteSpace(_settingsService.DeepseekProxyBaseUrl)
-            ? "https://api.chatanywhere.org/v1"
-            : _settingsService.DeepseekProxyBaseUrl;
+        CustomApiKey = _settingsService.CustomApiKey;
+        CustomApiBaseUrl = _settingsService.CustomApiBaseUrl;
         ModelName = _settingsService.ModelName;
         _lastModelName = string.IsNullOrWhiteSpace(ModelName) ? _lastModelName : ModelName;
         NamingFormat = _settingsService.NamingFormat;
         PreferredLanguage = _settingsService.PreferredLanguage;
         _geminiModelCache.AddRange(_settingsService.GeminiModels);
-        _openRouterModelCache.AddRange(_settingsService.OpenRouterModels);
-        _groqModelCache.AddRange(_settingsService.GroqModels);
-        _deepseekProxyModelCache.AddRange(_settingsService.DeepseekProxyModels);
+        _customApiModelCache.AddRange(_settingsService.CustomApiModels);
         ModelListTitle = BuildModelListTitle(ApiProvider);
         ApplyProviderDefaults(ApiProvider);
         LoadCachedModels(ApiProvider);
+
+        // 以非同步方式載入 sub_share 資料庫狀態，避免阻塞 UI 執行緒。
+        InitializeSubShareDbStatus();
+    }
+
+    private async void InitializeSubShareDbStatus()
+    {
+        try
+        {
+            SubShareDbStatusText = "讀取中...";
+            await RefreshSubShareDbStatusAsync();
+        }
+        catch
+        {
+            // 初始化失敗不應影響設定頁面開啟
+            SubShareDbStatusText = "本機狀態讀取失敗";
+        }
+    }
+
+    private async Task RefreshSubShareDbStatusAsync()
+    {
+        var status = await _subShareDbService.GetStatusAsync();
+        SubShareDbStatusText = BuildSubShareDbStatusText(status);
+    }
+
+    private static string BuildSubShareDbStatusText(SubShareDbStatus status)
+    {
+        var existsText = status.Exists ? "存在" : "不存在";
+        var sizeText = status.Exists ? FormatFileSize(status.Size) : "-";
+        var lastWriteText = status.LastWriteUtc.HasValue
+            ? status.LastWriteUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture)
+            : "-";
+        var sourceUrl = string.IsNullOrWhiteSpace(status.SourceUrl) ? "-" : status.SourceUrl;
+
+        return $"本機檔案：{existsText}\n大小：{sizeText}\n最後寫入：{lastWriteText}\n來源：{sourceUrl}";
+    }
+
+    private static string FormatFileSize(long bytes)
+    {
+        const double kb = 1024d;
+        const double mb = 1024d * 1024d;
+
+        if (bytes >= mb)
+        {
+            return string.Create(CultureInfo.InvariantCulture, $"{bytes / mb:0.0} MB");
+        }
+
+        if (bytes >= kb)
+        {
+            return string.Create(CultureInfo.InvariantCulture, $"{bytes / kb:0.0} KB");
+        }
+
+        return string.Create(CultureInfo.InvariantCulture, $"{bytes} B");
     }
 
     [RelayCommand]
@@ -100,8 +155,95 @@ public partial class SettingsViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private async Task UpdateSubShareDbAsync()
+    {
+        if (_isSubShareDbBusy) return;
+        _isSubShareDbBusy = true;
+
+        try
+        {
+            SubShareDbLastUpdatedText = "更新中...";
+            var result = await _subShareDbService.UpdateFromRemoteAsync(CancellationToken.None);
+            if (!result.IsSuccess)
+            {
+                SubShareDbLastUpdatedText = "最近操作：更新失敗";
+                _dialogService.ShowError(
+                    "sub_share 更新失敗",
+                    $"錯誤代碼: SUBSHARE_UPDATE_FAILED\n訊息: {result.ErrorMessage ?? "未知錯誤"}");
+                return;
+            }
+
+            await RefreshSubShareDbStatusAsync();
+            var localTime = result.TimestampUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
+            SubShareDbLastUpdatedText = $"最近操作：更新成功（{localTime}）";
+        }
+        catch (Exception ex)
+        {
+            SubShareDbLastUpdatedText = "最近操作：更新失敗";
+            _dialogService.ShowError(
+                "sub_share 更新失敗",
+                $"錯誤代碼: SUBSHARE_UPDATE_FAILED\n訊息: {ex.Message}");
+        }
+        finally
+        {
+            _isSubShareDbBusy = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task ImportSubShareDbAsync()
+    {
+        if (_isSubShareDbBusy) return;
+        _isSubShareDbBusy = true;
+
+        try
+        {
+            var filePath = _filePickerService.PickFile(
+                "選擇 db.xml",
+                "XML 檔案|*.xml|所有檔案|*.*",
+                "xml");
+
+            if (string.IsNullOrWhiteSpace(filePath))
+            {
+                SubShareDbLastUpdatedText = "最近操作：已取消";
+                return;
+            }
+
+            SubShareDbLastUpdatedText = "匯入中...";
+            var result = await _subShareDbService.ImportFromFileAsync(filePath, CancellationToken.None);
+            if (!result.IsSuccess)
+            {
+                SubShareDbLastUpdatedText = "最近操作：匯入失敗";
+                _dialogService.ShowError(
+                    "sub_share 匯入失敗",
+                    $"錯誤代碼: SUBSHARE_IMPORT_FAILED\n訊息: {result.ErrorMessage ?? "未知錯誤"}");
+                return;
+            }
+
+            await RefreshSubShareDbStatusAsync();
+            var localTime = result.TimestampUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture);
+            SubShareDbLastUpdatedText = $"最近操作：匯入成功（{localTime}）";
+        }
+        catch (Exception ex)
+        {
+            SubShareDbLastUpdatedText = "最近操作：匯入失敗";
+            _dialogService.ShowError(
+                "sub_share 匯入失敗",
+                $"錯誤代碼: SUBSHARE_IMPORT_FAILED\n訊息: {ex.Message}");
+        }
+        finally
+        {
+            _isSubShareDbBusy = false;
+        }
+    }
+
+    [RelayCommand]
     private async Task DetectModelsAsync(ApiProvider provider)
     {
+        // 在偵測前先將目前 VM 的值同步到 _settingsService
+        // 確保 CustomApiModelCatalogService 讀到最新的 CustomApiBaseUrl
+        UpdateSettingsSnapshot();
+
         var apiKey = GetApiKey(provider);
         if (string.IsNullOrWhiteSpace(apiKey))
         {
@@ -122,7 +264,10 @@ public partial class SettingsViewModel : ObservableObject
 
             if (models.Count == 0)
             {
+                // 沒有可用模型時，顯示錯誤彈窗，錯誤代碼為 EMPTY_MODELS
                 ApiTestStatus = "偵測失敗或沒有可用模型";
+                var errorMessage = $"提供者: {provider}\n錯誤代碼: EMPTY_MODELS\n訊息: 沒有偵測到任何可用模型";
+                _dialogService.ShowError("模型偵測失敗", errorMessage);
                 LoadCachedModels(provider);
                 return;
             }
@@ -133,9 +278,22 @@ public partial class SettingsViewModel : ObservableObject
             UpdateSettingsSnapshot();
             await _settingsService.SaveAsync();
         }
-        catch
+        catch (ModelCatalogException ex)
         {
+            // 處理 ModelCatalogException，顯示包含詳細錯誤資訊的彈窗
             ApiTestStatus = "偵測失敗，請確認 API Key";
+            var statusCodeText = ex.StatusCode.HasValue ? $"HTTP {ex.StatusCode}" : "N/A";
+            var errorMessage = $"提供者: {ex.Provider}\n錯誤類型: {ex.ErrorType}\n錯誤代碼: {statusCodeText}\n訊息: {ex.Message}";
+            _dialogService.ShowError("模型偵測失敗", errorMessage);
+            AvailableModels.Clear();
+            LoadCachedModels(provider);
+        }
+        catch (Exception ex)
+        {
+            // 處理其他未知例外，顯示錯誤代碼為 EXCEPTION
+            ApiTestStatus = "偵測失敗，請確認 API Key";
+            var errorMessage = $"提供者: {provider}\n錯誤代碼: EXCEPTION\n訊息: {ex.Message}";
+            _dialogService.ShowError("模型偵測失敗", errorMessage);
             AvailableModels.Clear();
             LoadCachedModels(provider);
         }
@@ -168,9 +326,7 @@ public partial class SettingsViewModel : ObservableObject
             {
                 FileName = provider switch
                 {
-                    ApiProvider.OpenRouter => "https://openrouter.ai/keys",
-                    ApiProvider.Groq => "https://console.groq.com/keys",
-                    ApiProvider.DeepseekProxy => "https://github.com/chatanywhere/GPT_API_free",
+                    ApiProvider.CustomApi => "https://platform.openai.com/account/api-keys", // Default to OpenAI or generic
                     _ => "https://aistudio.google.com/app/apikey"
                 },
                 UseShellExecute = true
@@ -198,25 +354,9 @@ public partial class SettingsViewModel : ObservableObject
         }
     }
 
-    partial void OnOpenRouterApiKeyChanged(string? value)
+    partial void OnCustomApiKeyChanged(string? value)
     {
-        if (ApiProvider == ApiProvider.OpenRouter)
-        {
-            ApiTestStatus = string.Empty;
-        }
-    }
-
-    partial void OnGroqApiKeyChanged(string? value)
-    {
-        if (ApiProvider == ApiProvider.Groq)
-        {
-            ApiTestStatus = string.Empty;
-        }
-    }
-
-    partial void OnDeepseekProxyApiKeyChanged(string? value)
-    {
-        if (ApiProvider == ApiProvider.DeepseekProxy)
+        if (ApiProvider == ApiProvider.CustomApi)
         {
             ApiTestStatus = string.Empty;
         }
@@ -248,19 +388,7 @@ public partial class SettingsViewModel : ObservableObject
             return;
         }
 
-        if (provider == ApiProvider.OpenRouter && IsGeminiModelName(ModelName))
-        {
-            ModelName = GetDefaultModel(provider);
-            return;
-        }
-
-        if (provider == ApiProvider.Groq && (IsGeminiModelName(ModelName) || IsOpenRouterModelName(ModelName) || IsDeepseekModelName(ModelName)))
-        {
-            ModelName = GetDefaultModel(provider);
-            return;
-        }
-
-        if (provider == ApiProvider.DeepseekProxy && !IsDeepseekModelName(ModelName))
+        if (provider == ApiProvider.CustomApi && IsGeminiModelName(ModelName))
         {
             ModelName = GetDefaultModel(provider);
         }
@@ -269,16 +397,6 @@ public partial class SettingsViewModel : ObservableObject
     private static bool IsGeminiModelName(string modelName)
     {
         return modelName.StartsWith("gemini-", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool IsOpenRouterModelName(string modelName)
-    {
-        return modelName.StartsWith("openrouter/", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool IsDeepseekModelName(string modelName)
-    {
-        return modelName.StartsWith("deepseek", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsPrimaryGeminiModelName(string modelName)
@@ -293,9 +411,7 @@ public partial class SettingsViewModel : ObservableObject
     {
         return provider switch
         {
-            ApiProvider.OpenRouter => ModelDefaults.OpenRouterDefaultModel,
-            ApiProvider.Groq => ModelDefaults.GroqDefaultModel,
-            ApiProvider.DeepseekProxy => ModelDefaults.DeepseekProxyDefaultModel,
+            ApiProvider.CustomApi => ModelDefaults.CustomApiDefaultModel,
             _ => ModelDefaults.GeminiDefaultModel
         };
     }
@@ -304,9 +420,7 @@ public partial class SettingsViewModel : ObservableObject
     {
         return provider switch
         {
-            ApiProvider.OpenRouter => "可選模型清單（免費額度，需先偵測）",
-            ApiProvider.Groq => "可選模型清單（Groq，需先偵測）",
-            ApiProvider.DeepseekProxy => "可選模型清單（DeepSeek 轉發，需先偵測）",
+            ApiProvider.CustomApi => "可選模型清單（自訂 API，需先偵測）",
             _ => "可選模型清單（需先偵測）"
         };
     }
@@ -316,14 +430,8 @@ public partial class SettingsViewModel : ObservableObject
     {
         switch (provider)
         {
-            case ApiProvider.OpenRouter:
-                OpenRouterApiKey = string.Empty;
-                break;
-            case ApiProvider.Groq:
-                GroqApiKey = string.Empty;
-                break;
-            case ApiProvider.DeepseekProxy:
-                DeepseekProxyApiKey = string.Empty;
+            case ApiProvider.CustomApi:
+                CustomApiKey = string.Empty;
                 break;
             default:
                 GeminiApiKey = string.Empty;
@@ -340,9 +448,7 @@ public partial class SettingsViewModel : ObservableObject
     {
         return provider switch
         {
-            ApiProvider.OpenRouter => OpenRouterApiKey,
-            ApiProvider.Groq => GroqApiKey,
-            ApiProvider.DeepseekProxy => DeepseekProxyApiKey,
+            ApiProvider.CustomApi => CustomApiKey,
             _ => GeminiApiKey
         };
     }
@@ -352,9 +458,7 @@ public partial class SettingsViewModel : ObservableObject
         AvailableModels.Clear();
         var cached = provider switch
         {
-            ApiProvider.OpenRouter => _openRouterModelCache,
-            ApiProvider.Groq => _groqModelCache,
-            ApiProvider.DeepseekProxy => _deepseekProxyModelCache,
+            ApiProvider.CustomApi => _customApiModelCache,
             _ => _geminiModelCache
         };
         if (cached.Count > 0)
@@ -378,17 +482,9 @@ public partial class SettingsViewModel : ObservableObject
     {
         switch (provider)
         {
-            case ApiProvider.OpenRouter:
-                _openRouterModelCache.Clear();
-                _openRouterModelCache.AddRange(models);
-                break;
-            case ApiProvider.Groq:
-                _groqModelCache.Clear();
-                _groqModelCache.AddRange(models);
-                break;
-            case ApiProvider.DeepseekProxy:
-                _deepseekProxyModelCache.Clear();
-                _deepseekProxyModelCache.AddRange(models);
+            case ApiProvider.CustomApi:
+                _customApiModelCache.Clear();
+                _customApiModelCache.AddRange(models);
                 break;
             default:
                 _geminiModelCache.Clear();
@@ -401,15 +497,11 @@ public partial class SettingsViewModel : ObservableObject
     {
         _settingsService.ApiProvider = ApiProvider;
         _settingsService.GeminiApiKey = GeminiApiKey;
-        _settingsService.OpenRouterApiKey = OpenRouterApiKey;
         _settingsService.TmdbApiKey = TmdbApiKey;
-        _settingsService.GroqApiKey = GroqApiKey;
-        _settingsService.DeepseekProxyApiKey = DeepseekProxyApiKey;
-        _settingsService.DeepseekProxyBaseUrl = DeepseekProxyBaseUrl;
+        _settingsService.CustomApiKey = CustomApiKey;
+        _settingsService.CustomApiBaseUrl = CustomApiBaseUrl;
         _settingsService.GeminiModels = new List<string>(_geminiModelCache);
-        _settingsService.OpenRouterModels = new List<string>(_openRouterModelCache);
-        _settingsService.GroqModels = new List<string>(_groqModelCache);
-        _settingsService.DeepseekProxyModels = new List<string>(_deepseekProxyModelCache);
+        _settingsService.CustomApiModels = new List<string>(_customApiModelCache);
         if (string.IsNullOrWhiteSpace(ModelName))
         {
             ModelName = GetDefaultModel(ApiProvider);

@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 using System.Collections;
 using System.Collections.ObjectModel;
 using System.IO;
@@ -22,12 +23,18 @@ public partial class MainViewModel : ObservableObject
 {
     private readonly IMetadataProvider _metadataProvider;
     private readonly IFolderPickerService _folderPickerService;
+    private readonly IFilePickerService _filePickerService;
     private readonly IServiceProvider _serviceProvider;
     private readonly ISettingsService _settingsService;
     private readonly IModelCatalogService _modelCatalogService;
     private readonly IHistoryDbService _historyDbService;
     private readonly IAnimeDbVerificationService _animeDbVerificationService;
     private readonly IOfficialTitleLookupService _officialTitleLookupService;
+    private readonly ISubShareTitleSearchService _subShareTitleSearchService;
+    private readonly ISubShareSubtitleDownloadService _subShareSubtitleDownloadService;
+    private readonly ISubShareSubtitleUploadService _subShareSubtitleUploadService;
+    private readonly IDialogService _dialogService;
+    private readonly TitleMappingService _titleMappingService;
     private readonly ICollectionView _folderView;
     private readonly Dictionary<string, Regex> _formatRegexCache = new(StringComparer.Ordinal);
     private string _lastModelName = ModelDefaults.GeminiDefaultModel;
@@ -36,21 +43,33 @@ public partial class MainViewModel : ObservableObject
     public MainViewModel(
         IMetadataProvider metadataProvider,
         IFolderPickerService folderPickerService,
+        IFilePickerService filePickerService,
         IServiceProvider serviceProvider,
         ISettingsService settingsService,
         IModelCatalogService modelCatalogService,
         IHistoryDbService historyDbService,
         IAnimeDbVerificationService animeDbVerificationService,
-        IOfficialTitleLookupService officialTitleLookupService)
+        IOfficialTitleLookupService officialTitleLookupService,
+        ISubShareTitleSearchService subShareTitleSearchService,
+        ISubShareSubtitleDownloadService subShareSubtitleDownloadService,
+        ISubShareSubtitleUploadService subShareSubtitleUploadService,
+        IDialogService dialogService,
+        TitleMappingService titleMappingService)
     {
         _metadataProvider = metadataProvider;
         _folderPickerService = folderPickerService;
+        _filePickerService = filePickerService;
         _serviceProvider = serviceProvider;
         _settingsService = settingsService;
         _modelCatalogService = modelCatalogService;
         _historyDbService = historyDbService;
         _animeDbVerificationService = animeDbVerificationService;
         _officialTitleLookupService = officialTitleLookupService;
+        _subShareTitleSearchService = subShareTitleSearchService;
+        _subShareSubtitleDownloadService = subShareSubtitleDownloadService;
+        _subShareSubtitleUploadService = subShareSubtitleUploadService;
+        _dialogService = dialogService;
+        _titleMappingService = titleMappingService;
         FolderList = new ObservableCollection<AnimeFolderInfo>();
         _folderView = CollectionViewSource.GetDefaultView(FolderList);
         _folderView.Filter = FilterFolder;
@@ -304,9 +323,9 @@ public partial class MainViewModel : ObservableObject
             for (var i = 0; i < pendingProcessing.Count; i += batchSize)
             {
                 var batch = pendingProcessing.Skip(i).Take(batchSize).ToList();
-                var names = batch.Select(x => x.Dir.Name).ToList();
+                var names = batch.Select(x => NormalizeForRecognition(x.Dir.Name)).ToList();
 
-                // 1. 初次辨識 (使用原始名稱)
+                // 1. 初次辨識 (先清理再辨識)
                 var results = await _metadataProvider.AnalyzeBatchAsync(names);
 
                 for (var j = 0; j < batch.Count; j++)
@@ -319,18 +338,18 @@ public partial class MainViewModel : ObservableObject
                         await ApplyMetadataAsync(info, result);
                     }
 
-                    // 2. [重試機制] 如果驗證失敗，嘗試清理雜訊後再次辨識
+                    // 2. [重試機制] 如果驗證失敗，改用原始名稱再試一次
                     if (info.VerificationStatus == AnimeDbVerificationStatus.Failed)
                     {
-                        var cleanName = CleanFolderNameForRetry(dirInfo.Name);
+                        var cleanName = NormalizeForRecognition(dirInfo.Name);
 
-                        // 只有當清理後的名稱變短且不同時才重試，避免浪費 API
+                        // 只有當清理後名稱與原始不同時才重試，避免浪費 API
                         if (!string.Equals(cleanName, dirInfo.Name, StringComparison.OrdinalIgnoreCase) && cleanName.Length > 2)
                         {
-                            AddScanLog($"驗證失敗，嘗試清理雜訊重試: {cleanName}");
+                            AddScanLog($"驗證失敗，改用原始名稱重試: {dirInfo.Name}");
 
                             // 單筆重試
-                            var retryResult = await _metadataProvider.AnalyzeAsync(cleanName);
+                            var retryResult = await _metadataProvider.AnalyzeAsync(dirInfo.Name);
                             if (retryResult != null)
                             {
                                 await ApplyMetadataAsync(info, retryResult);
@@ -371,8 +390,8 @@ public partial class MainViewModel : ObservableObject
     {
         if (string.IsNullOrWhiteSpace(folderName)) return string.Empty;
 
-        // 1. 使用 Regex 移除 [] 和 () 內的內容
-        var cleaned = BracketRegex().Replace(folderName, " ");
+        // 1. 只移除包含年份/解析/集數等技術標籤的括號內容，保留純標題
+        var cleaned = NoiseBracketRegex().Replace(folderName, " ");
 
         // 2. 移除常見的技術雜訊關鍵字
         var noise = new[] { "1080p", "720p", "mkv", "mp4", "x264", "x265", "AAC", "BDRip", "WebRip", "AVC", "Hi10P" };
@@ -384,6 +403,15 @@ public partial class MainViewModel : ObservableObject
         // 3. 移除多餘空白並修剪
         return string.Join(" ", cleaned.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries)).Trim();
     }
+
+    private static string NormalizeForRecognition(string folderName)
+    {
+        var cleaned = CleanFolderNameForRetry(folderName);
+        return string.IsNullOrWhiteSpace(cleaned) ? folderName : cleaned;
+    }
+
+    [GeneratedRegex(@"\[[^\]]*(\d{4}|\d{3,4}p|x\d+|BDRIP|BLURAY|WEB[- ]?DL|WEBRIP|HEVC|AVC|X265|X264|FIN|SP|\d+\s*-\s*\d+)[^\]]*\]|\([^\)]*(\d{4}|\d{3,4}p|x\d+|BDRIP|BLURAY|WEB[- ]?DL|WEBRIP|HEVC|AVC|X265|X264|FIN|SP|\d+\s*-\s*\d+)[^\)]*\)", RegexOptions.IgnoreCase | RegexOptions.Compiled)]
+    private static partial Regex NoiseBracketRegex();
 
     [RelayCommand(CanExecute = nameof(CanExecuteAction))]
     private async Task ReanalyzeFolderAsync(object? parameter)
@@ -406,7 +434,7 @@ public partial class MainViewModel : ObservableObject
             for (var i = 0; i < targets.Count; i += batchSize)
             {
                 var batch = targets.Skip(i).Take(batchSize).ToList();
-                var names = batch.Select(x => x.OriginalFolderName).ToList();
+                var names = batch.Select(x => NormalizeForRecognition(x.OriginalFolderName)).ToList();
                 var results = await _metadataProvider.AnalyzeBatchAsync(names);
 
                 for (var j = 0; j < batch.Count; j++)
@@ -478,6 +506,200 @@ public partial class MainViewModel : ObservableObject
         catch (Exception ex)
         {
             StatusMessage = $"重新辨識失敗: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanExecuteAction))]
+    private async Task ExportScanLogsAsync()
+    {
+        try
+        {
+            var baseDir = AppContext.BaseDirectory;
+            var logDir = Path.Combine(baseDir, "logs");
+            Directory.CreateDirectory(logDir);
+
+            var fileName = $"scanlog_{DateTime.Now:yyyyMMdd_HHmmss}.txt";
+            var fullPath = Path.Combine(logDir, fileName);
+
+            await File.WriteAllLinesAsync(fullPath, ScanLogs);
+            StatusMessage = $"已匯出記錄: {fullPath}";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"匯出記錄失敗: {ex.Message}";
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanExecuteAction))]
+    private async Task ReverifySubShareAsync(object? parameter)
+    {
+        var targets = ResolveSelection(parameter, _ => true);
+        if (targets.Count == 0)
+        {
+            StatusMessage = "請先選擇要重新驗證 sub_share 的資料夾。";
+            return;
+        }
+
+        try
+        {
+            IsBusy = true;
+            StatusMessage = $"重新驗證 sub_share 中... 0/{targets.Count}";
+
+            var processed = 0;
+            foreach (var info in targets)
+            {
+                await RefreshSubShareMatchAsync(info);
+                processed++;
+                StatusMessage = $"重新驗證 sub_share 中... {processed}/{targets.Count}";
+            }
+
+            StatusMessage = $"重新驗證 sub_share 完成: {processed}/{targets.Count}";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"重新驗證 sub_share 失敗: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanExecuteAction))]
+    private async Task DownloadSubShareSubtitlesAsync(object? parameter)
+    {
+        var selection = ResolveSelection(parameter, _ => true);
+        if (selection.Count == 0)
+        {
+            StatusMessage = "請先選擇要下載字幕的資料夾。";
+            return;
+        }
+
+        var targets = selection.Where(x => x.HasSubShareMatch).ToList();
+        if (targets.Count == 0)
+        {
+            StatusMessage = "選取項目未命中 sub_share，沒有可下載的字幕。";
+            return;
+        }
+
+        var destinationRoot = _folderPickerService.PickFolder();
+        if (string.IsNullOrWhiteSpace(destinationRoot))
+        {
+            StatusMessage = "已取消字幕下載。";
+            return;
+        }
+
+        try
+        {
+            IsBusy = true;
+
+            var total = targets.Count;
+            var processed = 0;
+            var downloadedTotal = 0;
+            var skippedTotal = 0;
+
+            foreach (var info in targets)
+            {
+                processed++;
+                StatusMessage = $"字幕下載中... {processed}/{total}";
+
+                var result = await _subShareSubtitleDownloadService.DownloadAsync(info, destinationRoot, CancellationToken.None);
+                if (!string.IsNullOrWhiteSpace(result.ErrorMessage))
+                {
+                    // 依規格：失敗不得拋到 UI thread，改由 VM 統一顯示錯誤碼
+                    _dialogService.ShowError("SUBSHARE_SUBTITLE_DOWNLOAD_FAILED", result.ErrorMessage);
+                    StatusMessage = "字幕下載失敗。";
+                    return;
+                }
+
+                downloadedTotal += result.DownloadedCount;
+                skippedTotal += result.SkippedCount;
+
+                StatusMessage = $"字幕下載中... {processed}/{total} (已下載 {downloadedTotal}，略過 {skippedTotal})";
+            }
+
+            StatusMessage = $"字幕下載完成：已下載 {downloadedTotal}，略過 {skippedTotal}。";
+        }
+        catch (Exception ex)
+        {
+            _dialogService.ShowError("SUBSHARE_SUBTITLE_DOWNLOAD_FAILED", ex.Message);
+            StatusMessage = "字幕下載失敗。";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanExecuteAction))]
+    private async Task UploadSubShareSubtitlesAsync(object? parameter)
+    {
+        var selection = ResolveSelection(parameter, _ => true);
+        if (selection.Count == 0)
+        {
+            StatusMessage = "請先選擇要上傳字幕的資料夾。";
+            return;
+        }
+
+        if (selection.Count > 1)
+        {
+            StatusMessage = "請一次只選擇一個資料夾進行字幕上傳。";
+            return;
+        }
+
+        var target = selection.First();
+        if (!target.HasSubShareMatch || string.IsNullOrWhiteSpace(target.SubShareRepoPath))
+        {
+            StatusMessage = "選取項目未命中 sub_share，無法上傳字幕。";
+            return;
+        }
+
+        var files = _filePickerService.PickFiles(
+            "選擇要上傳的字幕檔",
+            "字幕檔 (*.ass;*.ssa;*.srt;*.sub;*.txt)|*.ass;*.ssa;*.srt;*.sub;*.txt|所有檔案 (*.*)|*.*",
+            ".ass");
+
+        if (files.Count == 0)
+        {
+            StatusMessage = "已取消字幕上傳。";
+            return;
+        }
+
+        var destinationRoot = _folderPickerService.PickFolder();
+        if (string.IsNullOrWhiteSpace(destinationRoot))
+        {
+            StatusMessage = "已取消字幕上傳。";
+            return;
+        }
+
+        try
+        {
+            IsBusy = true;
+            StatusMessage = "建立上傳包中...";
+
+            var result = await _subShareSubtitleUploadService.CreateUploadPackageAsync(
+                target.SubShareRepoPath,
+                files,
+                destinationRoot,
+                CancellationToken.None);
+
+            if (!result.Success)
+            {
+                _dialogService.ShowError("SUBSHARE_SUBTITLE_UPLOAD_FAILED", result.Message);
+                StatusMessage = "字幕上傳失敗。";
+                return;
+            }
+
+            StatusMessage = result.Message;
+        }
+        catch (Exception ex)
+        {
+            _dialogService.ShowError("SUBSHARE_SUBTITLE_UPLOAD_FAILED", ex.Message);
+            StatusMessage = "字幕上傳失敗。";
         }
         finally
         {
@@ -673,9 +895,7 @@ public partial class MainViewModel : ObservableObject
         AvailableModels.Clear();
         var cached = provider switch
         {
-            ApiProvider.OpenRouter => _settingsService.OpenRouterModels,
-            ApiProvider.Groq => _settingsService.GroqModels,
-            ApiProvider.DeepseekProxy => _settingsService.DeepseekProxyModels,
+            ApiProvider.CustomApi => _settingsService.CustomApiModels,
             _ => _settingsService.GeminiModels
         };
 
@@ -705,19 +925,7 @@ public partial class MainViewModel : ObservableObject
             return;
         }
 
-        if (provider == ApiProvider.OpenRouter && IsGeminiModelName(ModelName))
-        {
-            ModelName = GetDefaultModel(provider);
-            return;
-        }
-
-        if (provider == ApiProvider.Groq && (IsGeminiModelName(ModelName) || IsOpenRouterModelName(ModelName) || IsDeepseekModelName(ModelName)))
-        {
-            ModelName = GetDefaultModel(provider);
-            return;
-        }
-
-        if (provider == ApiProvider.DeepseekProxy && !IsDeepseekModelName(ModelName))
+        if (provider == ApiProvider.CustomApi && IsGeminiModelName(ModelName))
         {
             ModelName = GetDefaultModel(provider);
         }
@@ -726,16 +934,6 @@ public partial class MainViewModel : ObservableObject
     private static bool IsGeminiModelName(string modelName)
     {
         return modelName.StartsWith("gemini-", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool IsOpenRouterModelName(string modelName)
-    {
-        return modelName.StartsWith("openrouter/", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool IsDeepseekModelName(string modelName)
-    {
-        return modelName.StartsWith("deepseek", StringComparison.OrdinalIgnoreCase);
     }
 
     private static bool IsPrimaryGeminiModelName(string modelName)
@@ -750,9 +948,7 @@ public partial class MainViewModel : ObservableObject
     {
         return provider switch
         {
-            ApiProvider.OpenRouter => ModelDefaults.OpenRouterDefaultModel,
-            ApiProvider.Groq => ModelDefaults.GroqDefaultModel,
-            ApiProvider.DeepseekProxy => ModelDefaults.DeepseekProxyDefaultModel,
+            ApiProvider.CustomApi => ModelDefaults.CustomApiDefaultModel,
             _ => ModelDefaults.GeminiDefaultModel
         };
     }
@@ -761,9 +957,7 @@ public partial class MainViewModel : ObservableObject
     {
         return provider switch
         {
-            ApiProvider.OpenRouter => _settingsService.OpenRouterApiKey,
-            ApiProvider.Groq => _settingsService.GroqApiKey,
-            ApiProvider.DeepseekProxy => _settingsService.DeepseekProxyApiKey,
+            ApiProvider.CustomApi => _settingsService.CustomApiKey,
             _ => _settingsService.GeminiApiKey
         };
     }
@@ -1011,27 +1205,153 @@ public partial class MainViewModel : ObservableObject
 
     private async Task ApplyOfficialTitlesAsync(AnimeFolderInfo info, string? japaneseTitle)
     {
-        if (string.IsNullOrWhiteSpace(japaneseTitle)) return;
+        // 先清除舊的 sub_share 狀態，避免沿用上次結果
+        info.SubShareRepoPath = null;
+        info.HasLocalSubtitles = null;
+        info.HasRemoteSubtitles = null;
 
-        var official = await _officialTitleLookupService.LookupAsync(japaneseTitle);
+        // 1. 優先使用 sub_share 映射（本機 db.xml），命中後先填入多語系標題
+        SubShareTitleMatch? subShareMatch = null;
+        try
+        {
+            foreach (var candidate in BuildSubShareCandidates(info, japaneseTitle))
+            {
+                subShareMatch = await _subShareTitleSearchService.FindBestMatchAsync(candidate, CancellationToken.None);
+                if (subShareMatch != null)
+                {
+                    break;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            // sub_share 載入/解析失敗時不可中斷命名流程，改由既有官方查詢補正
+            System.Diagnostics.Debug.WriteLine($"sub_share FindBestMatch failed: {ex}");
+        }
+
+        if (subShareMatch != null)
+        {
+            info.TitleJP = subShareMatch.TitleJp;
+            info.TitleCN = subShareMatch.TitleChs;
+            info.TitleTW = subShareMatch.TitleCht;
+            info.TitleEN = subShareMatch.TitleEn;
+            info.SubShareRepoPath = subShareMatch.RepoPath;
+            info.SubShareMatchedTitle = FirstNonEmpty(
+                subShareMatch.TitleCht,
+                subShareMatch.TitleChs,
+                subShareMatch.TitleJp,
+                subShareMatch.TitleEn,
+                subShareMatch.TitleRome);
+
+            // sub_share 命中時視為可用辨識結果，避免被判定為 Failed
+            if (info.VerificationStatus == AnimeDbVerificationStatus.Failed)
+            {
+                info.VerificationStatus = AnimeDbVerificationStatus.Verified;
+                info.IsIdentified = true;
+            }
+
+            await UpdateSubShareSubtitleStatusAsync(info);
+        }
+
+        // 2. 繼續使用原有的官方標題查詢服務 (TMDB/Bangumi/AniList) 補缺
+        var officialKey = FirstNonEmpty(
+            japaneseTitle,
+            info.TitleJP,
+            info.TitleTW,
+            info.TitleCN,
+            info.TitleEN,
+            info.AnalyzedTitle,
+            info.SelectedTitle);
+
+        if (string.IsNullOrWhiteSpace(officialKey))
+        {
+            info.AnalyzedTitle = FirstNonEmpty(info.TitleTW, info.TitleCN, info.TitleJP, info.TitleEN, japaneseTitle);
+            info.SelectedTitle = GetPreferredTitle(info);
+            info.UpdateAvailableTitles();
+            return;
+        }
+
+        var official = await _officialTitleLookupService.LookupAsync(officialKey);
         if (official == null)
         {
-            info.TitleCN = string.Empty;
-            info.TitleTW = string.Empty;
-            info.TitleEN = string.Empty;
-            info.AnalyzedTitle = japaneseTitle;
+            // 如果沒有官方資料，但有 sub_share 映射，則不清除
+            if (subShareMatch == null)
+            {
+                info.TitleCN = string.Empty;
+                info.TitleTW = string.Empty;
+                info.TitleEN = string.Empty;
+            }
+            
+            info.AnalyzedTitle = FirstNonEmpty(info.TitleTW, info.TitleCN, info.TitleJP, info.TitleEN, japaneseTitle);
             info.SelectedTitle = GetPreferredTitle(info);
             info.UpdateAvailableTitles();
             return;
         }
 
         info.TitleJP = FirstNonEmpty(official.TitleJP, info.TitleJP);
-        info.TitleCN = official.TitleCN ?? string.Empty;
-        info.TitleTW = official.TitleTW ?? string.Empty;
-        info.TitleEN = official.TitleEN ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(official.TitleCN)) info.TitleCN = official.TitleCN;
+        if (!string.IsNullOrWhiteSpace(official.TitleTW)) info.TitleTW = official.TitleTW;
+        if (!string.IsNullOrWhiteSpace(official.TitleEN)) info.TitleEN = official.TitleEN;
         info.AnalyzedTitle = FirstNonEmpty(info.TitleTW, info.TitleCN, info.TitleJP, info.TitleEN, japaneseTitle);
         info.SelectedTitle = GetPreferredTitle(info);
         info.UpdateAvailableTitles();
+    }
+
+    private async Task UpdateSubShareSubtitleStatusAsync(AnimeFolderInfo info)
+    {
+        if (string.IsNullOrWhiteSpace(info.SubShareRepoPath))
+        {
+            info.HasLocalSubtitles = null;
+            info.HasRemoteSubtitles = null;
+            return;
+        }
+
+        var localTask = Task.Run(() => HasLocalSubtitleFiles(info.OriginalPath));
+        var remoteTask = _subShareSubtitleDownloadService.HasRemoteSubtitlesAsync(info.SubShareRepoPath, CancellationToken.None);
+
+        try
+        {
+            var local = await localTask;
+            info.HasLocalSubtitles = local;
+        }
+        catch
+        {
+            info.HasLocalSubtitles = null;
+        }
+
+        try
+        {
+            info.HasRemoteSubtitles = await remoteTask;
+        }
+        catch
+        {
+            info.HasRemoteSubtitles = null;
+        }
+    }
+
+    private static bool HasLocalSubtitleFiles(string folderPath)
+    {
+        if (string.IsNullOrWhiteSpace(folderPath)) return false;
+        if (!Directory.Exists(folderPath)) return false;
+
+        var extensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ".ass",
+            ".ssa",
+            ".srt",
+            ".sub",
+            ".txt"
+        };
+
+        try
+        {
+            return Directory.EnumerateFiles(folderPath, "*.*", SearchOption.AllDirectories)
+                .Any(path => extensions.Contains(Path.GetExtension(path)));
+        }
+        catch
+        {
+            return false;
+        }
     }
 
     private static bool IsValidMetadata(AnimeMetadata metadata)
@@ -1112,6 +1432,95 @@ public partial class MainViewModel : ObservableObject
         }
 
         return null;
+    }
+
+    private static IEnumerable<string> BuildSubShareCandidates(AnimeFolderInfo info, string? primary)
+    {
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var ordered = new List<string>();
+
+        void Add(string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return;
+            var trimmed = value.Trim();
+            if (trimmed.Length == 0) return;
+            if (seen.Add(trimmed))
+            {
+                ordered.Add(trimmed);
+            }
+        }
+
+        Add(primary);
+        Add(info.TitleJP);
+        Add(info.TitleTW);
+        Add(info.TitleCN);
+        Add(info.TitleEN);
+        Add(info.AnalyzedTitle);
+        Add(info.SelectedTitle);
+        Add(info.OriginalFolderName);
+
+        return ordered;
+    }
+
+    private async Task RefreshSubShareMatchAsync(AnimeFolderInfo info)
+    {
+        info.SubShareRepoPath = null;
+        info.SubShareMatchedTitle = null;
+        info.HasLocalSubtitles = null;
+        info.HasRemoteSubtitles = null;
+
+        SubShareTitleMatch? subShareMatch = null;
+        try
+        {
+            AddScanLog($"sub_share 驗證開始: {info.OriginalFolderName}");
+            var diag = await _subShareTitleSearchService.GetDiagnosticsAsync(CancellationToken.None);
+            var errorInfo = string.IsNullOrWhiteSpace(diag.LastError) ? "" : $" error={diag.LastError}";
+            AddScanLog($"sub_share db: {diag.DbPath} (count={diag.RecordCount}, subs={diag.SubsElementCount}, parsed={diag.ParsedCount}, raw={diag.RawSubsTagCount}, size={diag.FileSize}){errorInfo}");
+            foreach (var candidate in BuildSubShareCandidates(info, info.SelectedTitle ?? info.AnalyzedTitle))
+            {
+                AddScanLog($"sub_share 查詢關鍵字: {candidate}");
+                subShareMatch = await _subShareTitleSearchService.FindBestMatchAsync(candidate, CancellationToken.None);
+                if (subShareMatch != null)
+                {
+                    break;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"sub_share Reverify failed: {ex}");
+            AddScanLog($"sub_share 驗證例外: {ex.Message}");
+        }
+
+        if (subShareMatch == null)
+        {
+            AddScanLog("sub_share 驗證結果: 未命中");
+            info.UpdateAvailableTitles();
+            return;
+        }
+
+        info.TitleJP = subShareMatch.TitleJp;
+        info.TitleCN = subShareMatch.TitleChs;
+        info.TitleTW = subShareMatch.TitleCht;
+        info.TitleEN = subShareMatch.TitleEn;
+        info.SubShareRepoPath = subShareMatch.RepoPath;
+        info.SubShareMatchedTitle = FirstNonEmpty(
+            subShareMatch.TitleCht,
+            subShareMatch.TitleChs,
+            subShareMatch.TitleJp,
+            subShareMatch.TitleEn,
+            subShareMatch.TitleRome);
+
+        AddScanLog($"sub_share 驗證結果: 命中 {info.SubShareMatchedTitle}");
+
+        if (info.VerificationStatus == AnimeDbVerificationStatus.Failed)
+        {
+            info.VerificationStatus = AnimeDbVerificationStatus.Verified;
+            info.IsIdentified = true;
+        }
+
+        info.UpdateAvailableTitles();
+        await UpdateSubShareSubtitleStatusAsync(info);
     }
 
     private static bool IsPathLengthValid(string path)

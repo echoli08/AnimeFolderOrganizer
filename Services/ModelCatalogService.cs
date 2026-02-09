@@ -7,29 +7,21 @@ namespace AnimeFolderOrganizer.Services;
 public class ModelCatalogService : IModelCatalogService
 {
     private readonly GeminiModelCatalogService _gemini;
-    private readonly OpenRouterModelCatalogService _openRouter;
-    private readonly GroqModelCatalogService _groq;
-    private readonly DeepseekProxyModelCatalogService _deepseek;
+    private readonly CustomApiModelCatalogService _customApi;
 
     public ModelCatalogService(
         GeminiModelCatalogService gemini,
-        OpenRouterModelCatalogService openRouter,
-        GroqModelCatalogService groq,
-        DeepseekProxyModelCatalogService deepseek)
+        CustomApiModelCatalogService customApi)
     {
         _gemini = gemini;
-        _openRouter = openRouter;
-        _groq = groq;
-        _deepseek = deepseek;
+        _customApi = customApi;
     }
 
     public Task<IReadOnlyList<string>> GetAvailableModelsAsync(ApiProvider provider, string? apiKey, bool forceRefresh)
     {
         return provider switch
         {
-            ApiProvider.OpenRouter => _openRouter.GetAvailableModelsAsync(apiKey, forceRefresh),
-            ApiProvider.Groq => _groq.GetAvailableModelsAsync(apiKey, forceRefresh),
-            ApiProvider.DeepseekProxy => _deepseek.GetAvailableModelsAsync(apiKey, forceRefresh),
+            ApiProvider.CustomApi => _customApi.GetAvailableModelsAsync(apiKey, forceRefresh),
             _ => _gemini.GetAvailableModelsAsync(apiKey, forceRefresh)
         };
     }

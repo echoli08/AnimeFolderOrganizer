@@ -9,6 +9,8 @@
     <UseWindowsForms>False</UseWindowsForms>
     <PackageIcon>icon.png</PackageIcon>
     <ApplicationIcon>icon\icon.ico</ApplicationIcon>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <GenerateTargetFrameworkAttribute>false</GenerateTargetFrameworkAttribute>
   </PropertyGroup>
 
   <ItemGroup>
@@ -19,6 +21,10 @@
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.0" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="Tools\SmokeQa\**\*.cs" />
   </ItemGroup>
 
   <ItemGroup>

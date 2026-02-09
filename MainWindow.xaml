@@ -6,7 +6,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="clr-namespace:AnimeFolderOrganizer.ViewModels"
         xmlns:sys="clr-namespace:System;assembly=mscorlib"
-        xmlns:models="clr-namespace:AnimeFolderOrganizer.Models"
+        xmlns:models="clr-namespace:AnimeFolderOrganizer.Models;assembly=AnimeFolderOrganizer"
         xmlns:helpers="clr-namespace:AnimeFolderOrganizer.Helpers"
         mc:Ignorable="d"
         Title="Anime Folder Organizer" Height="600" Width="1120"
@@ -19,6 +19,7 @@
             </ObjectDataProvider.MethodParameters>
         </ObjectDataProvider>
         <helpers:BindingProxy x:Key="RootViewModel" Data="{Binding}"/>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter" />
     </Window.Resources>
 
     <Grid Margin="10">
@@ -84,6 +85,19 @@
                     <MenuItem Header="以日文標題重新辨識"
                               Command="{Binding ReanalyzeByJapaneseTitleCommand}"
                               CommandParameter="{Binding PlacementTarget.SelectedItems, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                    <MenuItem Header="重新驗證 sub_share"
+                              Command="{Binding ReverifySubShareCommand}"
+                              CommandParameter="{Binding PlacementTarget.SelectedItems, RelativeSource={RelativeSource AncestorType=ContextMenu}}"/>
+                    <MenuItem Header="下載字幕 (sub_share)"
+                              Command="{Binding DownloadSubShareSubtitlesCommand}"
+                              CommandParameter="{Binding PlacementTarget.SelectedItems, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                              IsEnabled="{Binding PlacementTarget.SelectedItem.HasSubShareMatch, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                              Visibility="{Binding PlacementTarget.SelectedItem.HasSubShareMatch, RelativeSource={RelativeSource AncestorType=ContextMenu}, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                    <MenuItem Header="上傳字幕 (sub_share)"
+                              Command="{Binding UploadSubShareSubtitlesCommand}"
+                              CommandParameter="{Binding PlacementTarget.SelectedItems, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                              IsEnabled="{Binding PlacementTarget.SelectedItem.HasSubShareMatch, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
+                              Visibility="{Binding PlacementTarget.SelectedItem.HasSubShareMatch, RelativeSource={RelativeSource AncestorType=ContextMenu}, Converter={StaticResource BoolToVisibilityConverter}}"/>
                 </ContextMenu>
             </DataGrid.ContextMenu>
             <DataGrid.Columns>
@@ -104,6 +118,9 @@
                 <DataGridTextColumn Header="年份" Binding="{Binding Year}" Width="60" IsReadOnly="True"/>
                 <DataGridTextColumn Header="類別" Binding="{Binding Type}" Width="80" IsReadOnly="True"/>
                 <DataGridTextColumn Header="已辨識" Binding="{Binding IdentificationStatus}" Width="80" IsReadOnly="True"/>
+                <DataGridTextColumn Header="sub_share" Binding="{Binding SubShareMatchStatus}" Width="80" IsReadOnly="True"/>
+                <DataGridTextColumn Header="本地字幕" Binding="{Binding LocalSubtitleStatus}" Width="80" IsReadOnly="True"/>
+                <DataGridTextColumn Header="遠端字幕" Binding="{Binding RemoteSubtitleStatus}" Width="80" IsReadOnly="True"/>
             </DataGrid.Columns>
         </DataGrid>
 
@@ -125,9 +142,12 @@
                     </StackPanel>
                 </TabItem>
                 <TabItem Header="掃描記錄">
-                    <Grid Margin="6">
+                    <DockPanel Margin="6">
+                        <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Margin="0,0,0,6">
+                            <Button Content="匯出記錄" Command="{Binding ExportScanLogsCommand}" Padding="10,4"/>
+                        </StackPanel>
                         <ListBox ItemsSource="{Binding ScanLogs}"/>
-                    </Grid>
+                    </DockPanel>
                 </TabItem>
                 <TabItem Header="更名狀態">
                     <StackPanel Margin="6">

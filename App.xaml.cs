@@ -28,21 +28,24 @@ public partial class App : Application
         services.AddSingleton<ISettingsService, FileSettingsService>();
         // 注意: GeminiMetadataProvider 需要 API Key 才能正常運作
         services.AddSingleton<GeminiMetadataProvider>();
-        services.AddSingleton<OpenRouterMetadataProvider>();
-        services.AddSingleton<GroqMetadataProvider>();
-        services.AddSingleton<DeepseekProxyMetadataProvider>();
+        services.AddSingleton<CustomApiMetadataProvider>();
         services.AddSingleton<IMetadataProvider, MetadataProviderRouter>();
         services.AddSingleton<IFolderPickerService, FolderPickerService>();
+        services.AddSingleton<IFilePickerService, FilePickerService>();
         services.AddSingleton<ITextConverter, VbTextConverter>();
         services.AddSingleton<HttpClient>();
         services.AddSingleton<GeminiModelCatalogService>();
-        services.AddSingleton<OpenRouterModelCatalogService>();
-        services.AddSingleton<GroqModelCatalogService>();
-        services.AddSingleton<DeepseekProxyModelCatalogService>();
+        services.AddSingleton<CustomApiModelCatalogService>();
         services.AddSingleton<IModelCatalogService, ModelCatalogService>();
         services.AddSingleton<IAnimeDbVerificationService, AnimeDbVerificationService>();
         services.AddSingleton<IHistoryDbService, HistoryDbService>();
         services.AddSingleton<IOfficialTitleLookupService, OfficialTitleLookupService>();
+        services.AddSingleton<TitleMappingService>();
+        services.AddSingleton<ISubShareDbService, SubShareDbService>();
+        services.AddSingleton<ISubShareTitleSearchService, SubShareTitleSearchService>();
+        services.AddSingleton<ISubShareSubtitleDownloadService, SubShareSubtitleDownloadService>();
+        services.AddSingleton<ISubShareSubtitleUploadService, SubShareSubtitleUploadService>();
+        services.AddSingleton<IDialogService, WpfDialogService>();
 
         // Register ViewModels
         services.AddTransient<MainViewModel>();

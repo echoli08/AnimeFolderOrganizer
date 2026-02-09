@@ -14,13 +14,12 @@ using AnimeFolderOrganizer.Models;
 namespace AnimeFolderOrganizer.Services;
 
 /// <summary>
-/// 使用 Groq API 分析資料夾名稱
+/// 使用自訂 API (OpenAI 相容介面) 分析資料夾名稱
 /// </summary>
-public partial class GroqMetadataProvider : IMetadataProvider
+public partial class CustomApiMetadataProvider : IMetadataProvider
 {
-    public string ProviderName => "Groq";
+    public string ProviderName => "Custom API";
 
-    private const string Endpoint = "https://api.groq.com/openai/v1/chat/completions";
     private const int MaxRetryCount = 2;
     private const int CooldownMilliseconds = 1200;
     private const int BaseBackoffMilliseconds = 800;
@@ -30,7 +29,7 @@ public partial class GroqMetadataProvider : IMetadataProvider
     private readonly SemaphoreSlim _requestGate = new(1, 1);
     private DateTime _lastRequestUtc = DateTime.MinValue;
 
-    public GroqMetadataProvider(ISettingsService settingsService, HttpClient httpClient)
+    public CustomApiMetadataProvider(ISettingsService settingsService, HttpClient httpClient)
     {
         _settingsService = settingsService;
         _httpClient = httpClient;
@@ -44,7 +43,7 @@ public partial class GroqMetadataProvider : IMetadataProvider
 
     public async Task<IReadOnlyList<AnimeMetadata?>> AnalyzeBatchAsync(IReadOnlyList<string> folderNames)
     {
-        var apiKey = _settingsService.GroqApiKey;
+        var apiKey = _settingsService.CustomApiKey;
         var modelName = NormalizeModelName(_settingsService.ModelName);
 
         if (string.IsNullOrWhiteSpace(apiKey))
@@ -99,9 +98,25 @@ public partial class GroqMetadataProvider : IMetadataProvider
         return MapBatchResult(folderNames.Count, parsed);
     }
 
+    private string BuildEndpoint()
+    {
+        var baseUrl = string.IsNullOrWhiteSpace(_settingsService.CustomApiBaseUrl)
+            ? "https://api.openai.com/v1"
+            : _settingsService.CustomApiBaseUrl!.Trim();
+        baseUrl = baseUrl.TrimEnd('/');
+        
+        // 如果使用者輸入的 URL 已經包含 /chat/completions，就直接使用
+        if (baseUrl.EndsWith("/chat/completions", StringComparison.OrdinalIgnoreCase))
+        {
+            return baseUrl;
+        }
+        
+        return $"{baseUrl}/chat/completions";
+    }
+
     private static string NormalizeModelName(string? modelName)
     {
-        if (string.IsNullOrWhiteSpace(modelName)) return ModelDefaults.GroqDefaultModel;
+        if (string.IsNullOrWhiteSpace(modelName)) return ModelDefaults.CustomApiDefaultModel;
         return modelName.Trim();
     }
 
@@ -112,7 +127,7 @@ public partial class GroqMetadataProvider : IMetadataProvider
             try
             {
                 await WaitForCooldownAsync();
-                using var request = new HttpRequestMessage(HttpMethod.Post, Endpoint);
+                using var request = new HttpRequestMessage(HttpMethod.Post, BuildEndpoint());
                 request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
                 request.Content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
@@ -120,7 +135,7 @@ public partial class GroqMetadataProvider : IMetadataProvider
                 if (!response.IsSuccessStatusCode)
                 {
                     var errorContent = await response.Content.ReadAsStringAsync();
-                    System.Diagnostics.Debug.WriteLine($"Groq API Error: {response.StatusCode} - {errorContent}");
+                    System.Diagnostics.Debug.WriteLine($"Custom API Error: {response.StatusCode} - {errorContent}");
 
                     if (response.StatusCode == HttpStatusCode.Unauthorized || response.StatusCode == HttpStatusCode.Forbidden)
                     {
@@ -169,7 +184,7 @@ public partial class GroqMetadataProvider : IMetadataProvider
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"Groq Provider Exception: {ex}");
+                System.Diagnostics.Debug.WriteLine($"Custom API Provider Exception: {ex}");
                 return (null, null);
             }
         }
@@ -205,6 +220,8 @@ public partial class GroqMetadataProvider : IMetadataProvider
         return baseSeconds * Math.Pow(2, attempt) + jitter;
     }
 
+    // 重用 GeminiMetadataProvider 中的 Prompt 建構邏輯，或需要複製一份
+    // 假設 ApiPrompt 是一個共用的類別
     private static string BuildUserPrompt(IReadOnlyList<string> folderNames)
     {
         var lines = folderNames
