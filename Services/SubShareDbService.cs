@@ -13,7 +13,8 @@ namespace AnimeFolderOrganizer.Services;
 /// </summary>
 public class SubShareDbService : ISubShareDbService
 {
-    private const string RemoteUrl = "https://raw.githubusercontent.com/foxofice/sub_share/master/Subtitles%20DataBase/Files/db.xml";
+    private const string PrimarySvnUrl = "https://svn.acgdev.com:505/!/#sub_share/view/head/trunk/Subtitles%20DataBase/Files/db.xml";
+    private const string BackupGithubUrl = "https://raw.githubusercontent.com/foxofice/sub_share/master/Subtitles%20DataBase/Files/db.xml";
     private const string DbFileName = "db.xml";
     private readonly string _dbFolder;
     private readonly string _dbFilePath;
@@ -80,7 +81,7 @@ public class SubShareDbService : ISubShareDbService
         var status = new SubShareDbStatus
         {
             Exists = File.Exists(_dbFilePath),
-            SourceUrl = RemoteUrl
+            SourceUrl = $"Primary: {PrimarySvnUrl} | Backup: {BackupGithubUrl}"
         };
 
         if (status.Exists)
@@ -109,31 +110,19 @@ public class SubShareDbService : ISubShareDbService
 
         try
         {
-            // 下載至暫存檔
-            var response = await _httpClient.GetAsync(RemoteUrl, HttpCompletionOption.ResponseHeadersRead, ct);
-            if (!response.IsSuccessStatusCode)
+            var primaryResult = await TryDownloadAsync(PrimarySvnUrl, tempFilePath, useBasicAuth: true, ct);
+            if (!primaryResult.Success)
             {
-                return SubShareDbUpdateResult.Failed($"下載失敗：HTTP {(int)response.StatusCode}");
+                var backupResult = await TryDownloadAsync(BackupGithubUrl, tempFilePath, useBasicAuth: false, ct);
+                if (!backupResult.Success)
+                {
+                    return SubShareDbUpdateResult.Failed($"主來源失敗: {primaryResult.Message} / 備用來源失敗: {backupResult.Message}");
+                }
+
+                return SubShareDbUpdateResult.Succeeded(backupResult.FileSize);
             }
 
-            await using var httpStream = await response.Content.ReadAsStreamAsync(ct);
-            await using var fileStream = new FileStream(tempFilePath, FileMode.Create, FileAccess.Write, FileShare.None);
-
-            await httpStream.CopyToAsync(fileStream, ct);
-
-            // 驗證檔案大小
-            fileStream.Dispose();
-            var fileInfo = new FileInfo(tempFilePath);
-            if (fileInfo.Length == 0)
-            {
-                File.Delete(tempFilePath);
-                return SubShareDbUpdateResult.Failed("下載的檔案大小為 0");
-            }
-
-            // 原子性替換
-            ReplaceFileAtomically(tempFilePath, _dbFilePath);
-
-            return SubShareDbUpdateResult.Succeeded(fileInfo.Length);
+            return SubShareDbUpdateResult.Succeeded(primaryResult.FileSize);
         }
         catch (OperationCanceledException)
         {
@@ -144,6 +133,49 @@ public class SubShareDbService : ISubShareDbService
         {
             File.Delete(tempFilePath);
             return SubShareDbUpdateResult.Failed($"下載發生錯誤：{ex.Message}");
+        }
+    }
+
+    private async Task<(bool Success, string Message, long FileSize)> TryDownloadAsync(
+        string url,
+        string tempFilePath,
+        bool useBasicAuth,
+        CancellationToken ct)
+    {
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            if (useBasicAuth)
+            {
+                // SVN 測試帳號：test / 空密碼
+                var credential = Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes("test:"));
+                request.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Basic", credential);
+            }
+
+            var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
+            if (!response.IsSuccessStatusCode)
+            {
+                return (false, $"HTTP {(int)response.StatusCode}", 0);
+            }
+
+            await using var httpStream = await response.Content.ReadAsStreamAsync(ct);
+            await using var fileStream = new FileStream(tempFilePath, FileMode.Create, FileAccess.Write, FileShare.None);
+            await httpStream.CopyToAsync(fileStream, ct);
+
+            fileStream.Dispose();
+            var fileInfo = new FileInfo(tempFilePath);
+            if (fileInfo.Length == 0)
+            {
+                File.Delete(tempFilePath);
+                return (false, "下載的檔案大小為 0", 0);
+            }
+
+            ReplaceFileAtomically(tempFilePath, _dbFilePath);
+            return (true, string.Empty, fileInfo.Length);
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message, 0);
         }
     }
 

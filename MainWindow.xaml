@@ -93,11 +93,7 @@
                               CommandParameter="{Binding PlacementTarget.SelectedItems, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                               IsEnabled="{Binding PlacementTarget.SelectedItem.HasSubShareMatch, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
                               Visibility="{Binding PlacementTarget.SelectedItem.HasSubShareMatch, RelativeSource={RelativeSource AncestorType=ContextMenu}, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                    <MenuItem Header="上傳字幕 (sub_share)"
-                              Command="{Binding UploadSubShareSubtitlesCommand}"
-                              CommandParameter="{Binding PlacementTarget.SelectedItems, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                              IsEnabled="{Binding PlacementTarget.SelectedItem.HasSubShareMatch, RelativeSource={RelativeSource AncestorType=ContextMenu}}"
-                              Visibility="{Binding PlacementTarget.SelectedItem.HasSubShareMatch, RelativeSource={RelativeSource AncestorType=ContextMenu}, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                    <!-- 暫時停用字幕上傳功能 -->
                 </ContextMenu>
             </DataGrid.ContextMenu>
             <DataGrid.Columns>
