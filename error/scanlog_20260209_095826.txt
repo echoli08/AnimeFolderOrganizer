@@ -1,6 +1,0 @@
-09:57:36 開始掃描: E:\新增資料夾\新增資料夾
-09:57:49 驗證失敗，改用原始名稱重試: [2025][Guilty Gear Strive Dual Rulers][BDRIP][1080P][1-8Fin+SP]
-09:58:05 sub_share 驗證開始: [BDrip] Kusuriya no Hitorigoto S02 [7³ACG]
-09:58:05 sub_share db: F:\Android\WPF\AnimeFolderOrganizer\bin\Debug\net9.0-windows\subshare\db.xml (count=4606, subs=4606, parsed=4606, raw=4606, size=2866927)
-09:58:05 sub_share 查詢關鍵字: 藥師少女的獨語
-09:58:06 sub_share 驗證結果: 命中 藥屋少女的呢喃/藥師少女的獨語
